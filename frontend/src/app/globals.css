@@ -2,320 +2,618 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ========================================
-   CYCLR - Eco-Playful Solarpunk Styles
-   Claymorphism + Frosted Glass
-   ======================================== */
+/* =====================================================
+   CYCLR - Organic Tech Maximalism
+   "Stripe meets National Geographic in 2050"
+   ===================================================== */
 
 :root {
-  /* Day Mode Colors */
-  --day-bg: #F7F5F0;
-  --day-surface: #FFFFFF;
+  /* Day Mode (The Surface) */
+  --bg-primary: #FEFEFE;
+  --bg-surface: #F5F5F5;
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --accent: #22C55E;
+  --text-primary: #0A0A0A;
+  --text-muted: #737373;
+  --shadow-clay: 20px 20px 60px #d9d9d9, -20px -20px 60px #ffffff;
   
-  /* Night Mode Colors */
-  --night-bg: #0B1121;
-  --night-surface: #131B2E;
+  /* Portal Colors */
+  --portal-inner: #22C55E;
+  --portal-outer: #16A34A;
+  --portal-glow: rgba(34, 197, 94, 0.5);
   
-  /* Primary Colors */
-  --leaf: #22C55E;
-  --leaf-light: #4ADE80;
-  --leaf-dark: #16A34A;
-  
-  --sky: #38BDF8;
-  --sky-light: #7DD3FC;
-  --sky-dark: #0EA5E9;
-  
-  --sunset: #FB923C;
-  
-  /* Clay Material */
-  --clay-light: #E8E4DC;
-  --clay: #D4CFC4;
-  --clay-dark: #B8B3A8;
-  
-  /* Fonts */
-  --font-fredoka: 'Fredoka', system-ui, sans-serif;
-  --font-nunito: 'Nunito', system-ui, sans-serif;
+  /* Transitions */
+  --transition-theme: 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ========================================
-   Base Styles
-   ======================================== */
+.dark {
+  /* Night Mode (The Ledger) */
+  --bg-primary: #050505;
+  --bg-surface: #0A0A0A;
+  --bg-glass: rgba(0, 0, 0, 0.7);
+  --accent: #00FF88;
+  --text-primary: #FAFAFA;
+  --text-muted: #A3A3A3;
+  --shadow-clay: 20px 20px 60px #040404, -20px -20px 60px #060606;
+  
+  /* Portal Colors - Neon */
+  --portal-inner: #00FFFF;
+  --portal-outer: #A855F7;
+  --portal-glow: rgba(0, 255, 255, 0.5);
+}
+
+/* Theme Transition Animation */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 0.5s ease, 
+              color 0.5s ease, 
+              border-color 0.5s ease,
+              fill 0.5s ease,
+              stroke 0.5s ease,
+              box-shadow 0.5s ease !important;
+}
+
+/* =====================================================
+   BASE STYLES
+   ===================================================== */
+
+* {
+  box-sizing: border-box;
+}
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
-/* Day mode (default) */
-html.day {
-  background-color: var(--day-bg);
-  color: #0B1121;
+html.lenis {
+  height: auto;
 }
 
-/* Night mode */
-html.night {
-  background-color: var(--night-bg);
-  color: #E2E8F0;
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
 }
 
 body {
-  font-family: var(--font-nunito);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  transition: background var(--transition-theme), color var(--transition-theme);
   overflow-x: hidden;
-  transition: background-color 0.5s ease, color 0.5s ease;
+  min-height: 100vh;
 }
 
-/* Paper grain texture for day mode */
-html.day body {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+/* Selection */
+::selection {
+  background: var(--accent);
+  color: var(--bg-primary);
 }
 
-/* ========================================
-   Typography - Rounded, Friendly
-   ======================================== */
-
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-fredoka);
-  font-weight: 600;
+/* Scrollbar - Night Mode Neon */
+::-webkit-scrollbar {
+  width: 8px;
 }
 
-.font-heading {
-  font-family: var(--font-fredoka);
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
 }
 
-.font-body {
-  font-family: var(--font-nunito);
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
 }
 
-/* HUD-style borders with glow */
-.hud-border {
-  position: relative;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--portal-inner);
 }
 
-.hud-border::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    135deg,
-    rgba(0, 255, 148, 0.3) 0%,
-    rgba(0, 255, 148, 0) 50%,
-    rgba(37, 99, 235, 0.3) 100%
-  );
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
-    linear-gradient(#fff 0 0);
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-/* ========================================
-   Neon Glow Effects
-   ======================================== */
-
-.glow-chlorophyll {
-  box-shadow: 
-    0 0 20px rgba(0, 255, 148, 0.15),
-    0 0 40px rgba(0, 255, 148, 0.1),
-    0 0 60px rgba(0, 255, 148, 0.05);
-}
-
-.glow-cyber {
-  box-shadow: 
-    0 0 20px rgba(37, 99, 235, 0.2),
-    0 0 40px rgba(37, 99, 235, 0.15),
-    0 0 60px rgba(37, 99, 235, 0.1);
-}
-
-.text-glow-chlorophyll {
-  text-shadow: 
-    0 0 10px rgba(0, 255, 148, 0.5),
-    0 0 20px rgba(0, 255, 148, 0.3),
-    0 0 30px rgba(0, 255, 148, 0.2);
-}
-
-.text-glow-cyber {
-  text-shadow: 
-    0 0 10px rgba(37, 99, 235, 0.5),
-    0 0 20px rgba(37, 99, 235, 0.3),
-    0 0 30px rgba(37, 99, 235, 0.2);
-}
-
-/* Animated glow pulse */
-.glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-@keyframes glow-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 20px rgba(0, 255, 148, 0.4));
-  }
-  50% {
-    filter: drop-shadow(0 0 40px rgba(0, 255, 148, 0.6));
-  }
-}
-
-/* ========================================
-   Typography - Futuristic Display
-   ======================================== */
+/* =====================================================
+   TYPOGRAPHY - Big & Bold
+   ===================================================== */
 
 .text-display {
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 0.9;
 }
 
-.text-gradient-chlorophyll {
-  background: linear-gradient(135deg, #00FF94 0%, #4DFFC0 50%, #00CC77 100%);
+.text-mono {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.text-floating {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Magnetic text effect */
+.text-magnetic {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* Gradient text */
+.text-gradient-day {
+  background: linear-gradient(135deg, #22C55E 0%, #16A34A 50%, #15803D 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.text-gradient-cyber {
-  background: linear-gradient(135deg, #2563EB 0%, #60A5FA 50%, #1D4ED8 100%);
+.text-gradient-night {
+  background: linear-gradient(135deg, #00FFFF 0%, #00FF88 50%, #A855F7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.text-gradient-mixed {
-  background: linear-gradient(135deg, #00FF94 0%, #2563EB 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* =====================================================
+   GLASS MORPHISM
+   ===================================================== */
+
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* ========================================
-   Interactive Elements
-   ======================================== */
-
-/* Magnetic button base */
-.magnetic-button {
-  position: relative;
-  cursor: pointer;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+.glass-strong {
+  background: var(--bg-glass);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Cursor-aware link underline */
-.link-underline {
-  position: relative;
+/* Clay shadows (Day mode) */
+.shadow-clay-light {
+  box-shadow: 20px 20px 60px #d9d9d9, -20px -20px 60px #ffffff;
 }
 
-.link-underline::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 1px;
-  background: var(--chlorophyll);
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+.dark .shadow-clay-light {
+  box-shadow: 20px 20px 60px #040404, -20px -20px 60px #0a0a0a;
 }
 
-.link-underline:hover::after {
-  width: 100%;
+/* =====================================================
+   NEON EFFECTS (Night Mode)
+   ===================================================== */
+
+.neon-glow {
+  box-shadow: 0 0 20px var(--portal-glow), 0 0 40px var(--portal-glow);
 }
 
-/* ========================================
-   Canvas & 3D Layer Utilities
-   ======================================== */
+.neon-text {
+  text-shadow: 0 0 10px var(--accent), 0 0 20px var(--accent), 0 0 40px var(--accent);
+}
 
-.canvas-container {
+.dark .neon-border {
+  border: 1px solid var(--accent);
+  box-shadow: inset 0 0 20px rgba(0, 255, 136, 0.1), 0 0 20px rgba(0, 255, 136, 0.2);
+}
+
+/* Data stream animation */
+.data-stream {
+  background: linear-gradient(
+    45deg,
+    transparent 0%,
+    rgba(0, 255, 136, 0.1) 25%,
+    transparent 50%,
+    rgba(168, 85, 247, 0.1) 75%,
+    transparent 100%
+  );
+  background-size: 200% 200%;
+  animation: dataStream 3s linear infinite;
+}
+
+/* =====================================================
+   THEME TRANSITION EFFECTS
+   ===================================================== */
+
+.theme-transition-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 0;
   pointer-events: none;
+  z-index: 9999;
 }
 
-.canvas-container.interactive {
-  pointer-events: auto;
+.theme-ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: themeRipple 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-.dom-layer {
+@keyframes themeRipple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 1;
+  }
+}
+
+/* Clip path transition */
+.clip-transition {
+  clip-path: circle(0% at var(--clip-x, 50%) var(--clip-y, 50%));
+  transition: clip-path 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.clip-transition.active {
+  clip-path: circle(150% at var(--clip-x, 50%) var(--clip-y, 50%));
+}
+
+/* =====================================================
+   LOADING SCREEN
+   ===================================================== */
+
+.loading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0;
+  width: 100vw;
+  height: 100vh;
+  perspective: 1000px;
+}
+
+.loading-cell {
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transform-style: preserve-3d;
+}
+
+/* Shockwave effect */
+.shockwave {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: shockwave 0.8s ease-out forwards;
+}
+
+@keyframes shockwave {
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+/* =====================================================
+   PORTAL EFFECTS
+   ===================================================== */
+
+.portal-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+}
+
+.portal-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: portalPulse 3s ease-in-out infinite;
+}
+
+@keyframes portalPulse {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1) rotate(180deg);
+    opacity: 1;
+  }
+}
+
+/* Space-time distortion */
+.distortion {
+  filter: url(#distortion);
+}
+
+/* =====================================================
+   IMAGE REVEAL - "The Curtain"
+   ===================================================== */
+
+.image-reveal {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-reveal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  z-index: 10;
+  transform: translateX(0);
+  transition: transform 0.8s cubic-bezier(0.77, 0, 0.175, 1);
+  clip-path: polygon(0 0, 100% 0, 85% 100%, 0 100%);
+}
+
+.image-reveal.revealed::before {
+  transform: translateX(110%);
+}
+
+.image-reveal img,
+.image-reveal video {
+  transform: scale(1.2);
+  transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1) 0.2s;
+}
+
+.image-reveal.revealed img,
+.image-reveal.revealed video {
+  transform: scale(1);
+}
+
+/* =====================================================
+   MOUSE TRAIL
+   ===================================================== */
+
+.mouse-trail {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+  mix-blend-mode: difference;
+}
+
+.trail-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: trailFade 1s ease-out forwards;
+}
+
+@keyframes trailFade {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+/* Day mode: Digital Pollen */
+.trail-pollen {
+  background: radial-gradient(circle, #22C55E 0%, transparent 70%);
+  filter: blur(2px);
+}
+
+/* Night mode: Data Glitches */
+.dark .trail-particle {
+  background: var(--portal-inner);
+  box-shadow: 0 0 10px var(--portal-inner);
+}
+
+/* =====================================================
+   PARALLAX LAYERS
+   ===================================================== */
+
+.parallax-bg {
+  will-change: transform;
+  transform: translateZ(-100px) scale(2);
+}
+
+.parallax-mid {
+  will-change: transform;
+  transform: translateZ(-50px) scale(1.5);
+}
+
+.parallax-fg {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.parallax-front {
+  will-change: transform;
+  transform: translateZ(50px) scale(0.75);
+}
+
+/* =====================================================
+   BUTTON STYLES
+   ===================================================== */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-primary);
+  padding: 1rem 2rem;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.btn-primary:hover::before {
+  transform: translateX(100%);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 40px var(--portal-glow);
+}
+
+/* Ghost button */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  padding: 1rem 2rem;
+  border: 1px solid var(--text-muted);
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* =====================================================
+   3D TOGGLE SWITCH
+   ===================================================== */
+
+.toggle-3d {
+  width: 80px;
+  height: 40px;
+  background: var(--bg-surface);
+  border-radius: 20px;
+  position: relative;
+  cursor: pointer;
+  box-shadow: 
+    inset 0 2px 10px rgba(0, 0, 0, 0.3),
+    0 5px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.4s ease;
+  transform-style: preserve-3d;
+  perspective: 200px;
+}
+
+.toggle-3d::before {
+  content: '';
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(145deg, #ffffff, #e6e6e6);
+  border-radius: 50%;
+  top: 4px;
+  left: 4px;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  box-shadow: 
+    0 2px 10px rgba(0, 0, 0, 0.2),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.dark .toggle-3d::before {
+  left: 44px;
+  background: linear-gradient(145deg, #00FF88, #00CC6A);
+  box-shadow: 
+    0 0 20px rgba(0, 255, 136, 0.5),
+    0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* =====================================================
+   ASYMMETRICAL LAYOUT HELPERS
+   ===================================================== */
+
+.offset-left {
+  margin-left: -10vw;
+}
+
+.offset-right {
+  margin-right: -10vw;
+}
+
+.overlap-top {
+  margin-top: -20vh;
   position: relative;
   z-index: 10;
 }
 
-/* ========================================
-   Section Markers for Scrollytelling
-   ======================================== */
+.overlap-bottom {
+  margin-bottom: -20vh;
+  position: relative;
+  z-index: 10;
+}
 
-.section-marker {
+/* Extreme z-index layering */
+.layer-back { z-index: 0; }
+.layer-mid { z-index: 10; }
+.layer-front { z-index: 20; }
+.layer-overlay { z-index: 30; }
+.layer-modal { z-index: 40; }
+.layer-toast { z-index: 50; }
+
+/* =====================================================
+   SCROLLYTELLING
+   ===================================================== */
+
+.scroll-section {
   min-height: 100vh;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.section-sticky {
+.sticky-container {
   position: sticky;
   top: 0;
   height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%;
+  overflow: hidden;
 }
 
-/* ========================================
-   Loading & Transitions
-   ======================================== */
-
-.page-transition-enter {
-  opacity: 0;
-  transform: translateY(20px);
+/* Coin journey path */
+.coin-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
 }
 
-.page-transition-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+.coin-path.animated {
+  animation: drawPath 3s ease-out forwards;
 }
 
-.page-transition-exit {
-  opacity: 1;
-}
-
-.page-transition-exit-active {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-/* Loader */
-.loader-ring {
-  width: 60px;
-  height: 60px;
-  border: 2px solid transparent;
-  border-top-color: var(--chlorophyll);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
+@keyframes drawPath {
   to {
-    transform: rotate(360deg);
+    stroke-dashoffset: 0;
   }
 }
 
-/* ========================================
-   Responsive Utilities
-   ======================================== */
+/* =====================================================
+   RESPONSIVE UTILITIES
+   ===================================================== */
 
 @media (max-width: 768px) {
-  .glass-panel {
-    --glass-blur: 12px;
+  .offset-left,
+  .offset-right {
+    margin-left: 0;
+    margin-right: 0;
   }
   
-  .section-marker {
-    min-height: 80vh;
+  .overlap-top,
+  .overlap-bottom {
+    margin-top: -10vh;
+    margin-bottom: -10vh;
   }
 }
 
@@ -327,16 +625,5 @@ h1, h2, h3, h4, h5, h6 {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-  
-  html.lenis,
-  html.lenis body {
-    scroll-behavior: auto;
-  }
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
   }
 }
