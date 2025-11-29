@@ -1,6 +1,6 @@
 'use client';
 
-import { Canvas, RootState } from '@react-three/fiber';
+import { Canvas} from '@react-three/fiber';
 import { View as DreiView, Preload } from '@react-three/drei';
 import { ReactNode, useRef, forwardRef, useImperativeHandle, MutableRefObject } from 'react';
 

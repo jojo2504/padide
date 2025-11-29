@@ -3,111 +3,88 @@
 @tailwind utilities;
 
 /* ========================================
-   CYCLR - Immersive Experience Styles
-   Bioluminescent + Glassmorphism 2.0
+   CYCLR - Eco-Playful Solarpunk Styles
+   Claymorphism + Frosted Glass
    ======================================== */
 
 :root {
-  /* Core Colors */
-  --void: #050505;
-  --void-deep: #020202;
-  --void-surface: #0A0A0A;
-  --holographic: #E2E8F0;
-  --holographic-bright: #F8FAFC;
-  --chlorophyll: #00FF94;
-  --chlorophyll-glow: rgba(0, 255, 148, 0.5);
-  --cyber: #2563EB;
-  --cyber-glow: rgba(37, 99, 235, 0.5);
+  /* Day Mode Colors */
+  --day-bg: #F7F5F0;
+  --day-surface: #FFFFFF;
   
-  /* Glass Properties */
-  --glass-bg: rgba(0, 0, 0, 0.2);
-  --glass-border: rgba(255, 255, 255, 0.05);
-  --glass-blur: 20px;
-  --glass-saturate: 180%;
+  /* Night Mode Colors */
+  --night-bg: #0B1121;
+  --night-surface: #131B2E;
+  
+  /* Primary Colors */
+  --leaf: #22C55E;
+  --leaf-light: #4ADE80;
+  --leaf-dark: #16A34A;
+  
+  --sky: #38BDF8;
+  --sky-light: #7DD3FC;
+  --sky-dark: #0EA5E9;
+  
+  --sunset: #FB923C;
+  
+  /* Clay Material */
+  --clay-light: #E8E4DC;
+  --clay: #D4CFC4;
+  --clay-dark: #B8B3A8;
+  
+  /* Fonts */
+  --font-fredoka: 'Fredoka', system-ui, sans-serif;
+  --font-nunito: 'Nunito', system-ui, sans-serif;
 }
 
 /* ========================================
-   Base & Reset
+   Base Styles
    ======================================== */
 
 html {
-  scroll-behavior: auto; /* Lenis handles smooth scrolling */
-  background-color: var(--void);
-  color: var(--holographic);
+  scroll-behavior: smooth;
 }
 
-html.lenis,
-html.lenis body {
-  height: auto;
+/* Day mode (default) */
+html.day {
+  background-color: var(--day-bg);
+  color: #0B1121;
 }
 
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
-
-.lenis.lenis-smooth iframe {
-  pointer-events: none;
+/* Night mode */
+html.night {
+  background-color: var(--night-bg);
+  color: #E2E8F0;
 }
 
 body {
-  background-color: var(--void);
-  color: var(--holographic);
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-family: var(--font-nunito);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  transition: background-color 0.5s ease, color 0.5s ease;
 }
 
-/* Hide scrollbar for immersive experience */
-.hide-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
+/* Paper grain texture for day mode */
+html.day body {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
 }
 
 /* ========================================
-   Glassmorphism 2.0 - HUD Style
+   Typography - Rounded, Friendly
    ======================================== */
 
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-border);
-  border-radius: 1rem;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-fredoka);
+  font-weight: 600;
 }
 
-.glass-panel-lg {
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.5rem;
+.font-heading {
+  font-family: var(--font-fredoka);
 }
 
-.glass-button {
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-button:hover {
-  background: rgba(0, 255, 148, 0.1);
-  border-color: rgba(0, 255, 148, 0.3);
-  box-shadow: 0 0 30px rgba(0, 255, 148, 0.15);
+.font-body {
+  font-family: var(--font-nunito);
 }
 
 /* HUD-style borders with glow */

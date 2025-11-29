@@ -1,73 +1,78 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
-import { useUIStore } from '@/lib/store';
-import SmoothScroll from '@/components/layout/smooth-scroll';
-import Scene from '@/components/canvas/scene';
-import CustomCursor from '@/components/dom/navigation/cursor';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ThemeProvider } from '@/components/theme/theme-provider';
+import { RecycleLoader } from '@/components/ui/clay-components';
 
 interface ProvidersProps {
   children: ReactNode;
 }
 
-// Preloader component
-function Preloader() {
-  const { isLoading, loadingProgress } = useUIStore();
+// Preloader component with recycling animation
+function Preloader({ onComplete }: { onComplete: () => void }) {
+  const [progress, setProgress] = useState(0);
   
-  if (!isLoading) return null;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + Math.random() * 15;
+        if (next >= 100) {
+          clearInterval(interval);
+          setTimeout(onComplete, 500);
+          return 100;
+        }
+        return next;
+      });
+    }, 150);
+    
+    return () => clearInterval(interval);
+  }, [onComplete]);
   
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-void">
+    <motion.div 
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-day-bg"
+      exit={{ opacity: 0, scale: 1.1 }}
+      transition={{ duration: 0.5 }}
+    >
       <div className="flex flex-col items-center gap-6">
-        {/* Logo/Brand mark */}
-        <div className="relative">
-          <div className="loader-ring" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-chlorophyll font-mono text-sm font-bold">
-              C
-            </span>
-          </div>
-        </div>
+        {/* Recycling loader */}
+        <RecycleLoader size={64} />
         
-        {/* Loading bar */}
-        <div className="w-48 h-0.5 bg-void-elevated rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-chlorophyll transition-all duration-300 ease-out-expo"
-            style={{ width: `${loadingProgress}%` }}
+        {/* Brand */}
+        <motion.div
+          className="text-3xl font-heading font-bold text-leaf"
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        >
+          CYCLR
+        </motion.div>
+        
+        {/* Progress bar */}
+        <div className="w-48 h-1 bg-clay rounded-full overflow-hidden">
+          <motion.div 
+            className="h-full bg-gradient-to-r from-leaf to-sky rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
           />
         </div>
         
         {/* Loading text */}
-        <p className="text-holographic-dim text-xs font-mono uppercase tracking-widest">
-          Loading Experience
+        <p className="text-void/50 text-sm font-body">
+          Loading the future...
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 export default function Providers({ children }: ProvidersProps) {
   const [isMounted, setIsMounted] = useState(false);
-  const setLoading = useUIStore((state) => state.setLoading);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     setIsMounted(true);
-    
-    // Simulate loading progress
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress >= 100) {
-        progress = 100;
-        setLoading(false, 100);
-        clearInterval(interval);
-      } else {
-        setLoading(true, progress);
-      }
-    }, 200);
-    
-    return () => clearInterval(interval);
-  }, [setLoading]);
+  }, []);
   
   // Prevent hydration mismatch
   if (!isMounted) {
@@ -75,20 +80,20 @@ export default function Providers({ children }: ProvidersProps) {
   }
   
   return (
-    <SmoothScroll>
-      {/* Preloader */}
-      <Preloader />
+    <ThemeProvider>
+      <AnimatePresence mode="wait">
+        {isLoading && (
+          <Preloader onComplete={() => setIsLoading(false)} />
+        )}
+      </AnimatePresence>
       
-      {/* Global 3D Canvas (fixed background) */}
-      <Scene />
-      
-      {/* Custom Cursor (desktop only) */}
-      <CustomCursor />
-      
-      {/* DOM Content Layer */}
-      <div className="dom-layer">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isLoading ? 0 : 1 }}
+        transition={{ duration: 0.5 }}
+      >
         {children}
-      </div>
-    </SmoothScroll>
+      </motion.div>
+    </ThemeProvider>
   );
 }
