@@ -1,0 +1,22 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: .dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: .dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/qrcodes:/app/qrcodes
+      - ./backend/proofs:/app/proofs
+    environment:
+      - PYTHONUNBUFFERED=1
