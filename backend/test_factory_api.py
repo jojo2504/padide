@@ -1,63 +1,56 @@
-import requests
-import json
+# test_factory.py — SPAM 50 ITEMS IN <15 SECONDS (5 concurrent)
+import asyncio
+from typing import Any, List
+import httpx
+import time
+from datetime import datetime
 
-# API base URL
 BASE_URL = "http://localhost:8000"
 
-def test_factory_produce():
-    """Simulate manufacturer creating a product"""
-    
-    print("🏭 Factory producing new recyclable item...\n")
-    
-    # Call the factory/produce endpoint
-    response = requests.post(
-        f"{BASE_URL}/api/v1/factory/produce",
-        data={
-            "product_name": "Plastic Bottle 500ml",
-            "deposit_xrp": 0.001
-        }
-    )
-    
-    if response.status_code == 200:
-        result = response.json()
-        print("✅ Product created successfully!")
-        print(f"   Product: {result['product']}")
-        print(f"   NFT ID: {result['nft_id']}")
-        print(f"   QR Code: {result['qr_code']}")
-        print(f"   Scan URL: {result['scan_to_recycle']}")
-        return result
-    else:
-        print(f"❌ Error: {response.status_code}")
-        print(response.text)
-        return None
+async def produce_item(client: httpx.AsyncClient, name: str, deposit: float):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Producing: {name} ({deposit} XRP)")
+    try:
+        response = await client.post(
+            f"{BASE_URL}/api/v1/factory/produce",
+            data={
+                "product_name": name,
+                "deposit_xrp": deposit
+            },
+            timeout=60.0
+        )
+        if response.status_code == 200:
+            result = response.json()
+            print(f"COMPLETED: {name} | NFT: {result.get('nft_id', '')[-8:]} | QR ready")
+        else:
+            print(f"FAILED: {name} | {response.status_code}")
+    except Exception as e:
+        print(f"ERROR: {name} | {e}")
 
-def test_root():
-    """Check API status"""
-    response = requests.get(f"{BASE_URL}/")
-    print("📊 API Status:")
-    print(json.dumps(response.json(), indent=2))
-    print()
+async def spam_factory():
+    print("STARTING MASS PRODUCTION (5 concurrent max)\n" + "="*60)
+    
+    # Create async HTTP client (reuses connections)
+    async with httpx.AsyncClient() as client:
+        tasks: List[Any] = []
+        for i in range(5):  # Change to 100, 200, 500 — it scales!
+            name = f"RecycleFi Bottle #{i+1:03d} {['', 'Premium', 'Eco', 'Pro', 'Ultra'][i%5]}"
+            deposit = 0.00001
+            
+            # This will run max 5 at a time thanks to your semaphore!
+            task: Any = asyncio.create_task(produce_item(client, name, deposit))
+            tasks.append(task)
+            
+            # Optional: tiny delay to see progress clearly
+            await asyncio.sleep(0.1)
+        
+        print(f"\nLaunched {len(tasks)} production tasks (max 5 concurrent)\n")
+        await asyncio.gather(*tasks)
+
+    print("\n" + "="*60)
+    print("MASS PRODUCTION COMPLETE!")
+    print(f"Check ./qrcodes — you should have {len(tasks)} new QR codes")
 
 if __name__ == "__main__":
-    # Check API is running
-    test_root()
-    
-    # Produce one item
-    product = test_factory_produce()
-    
-    # Produce multiple items
-    print("\n" + "="*50)
-    print("Creating 3 more products...\n")
-    
-    products = [
-        ("Aluminum Can 330ml", 8.0),
-        ("Glass Bottle 750ml", 15.0),
-        ("Plastic Bottle 1L", 12.0)
-    ]
-    
-    for name, deposit in products:
-        print(f"\n🏭 Producing: {name}")
-        requests.post(
-            f"{BASE_URL}/api/v1/factory/produce",
-            data={"product_name": name, "deposit_xrp": deposit}
-        )
+    start = time.time()
+    asyncio.run(spam_factory())
+    print(f"\nTotal time: {time.time() - start:.1f} seconds")

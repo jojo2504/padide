@@ -130,7 +130,6 @@ async def find_escrow_by_nft_memo(nft_id: str):
                 }
     return None
 
-
 @app.post("/api/v1/factory/produce")
 async def factory_produce(
     product_name: str = Form("Plastic Bottle"),
@@ -147,7 +146,6 @@ async def factory_produce(
         "qr_code": f"/qrcodes/{os.path.basename(item['qr_code'])}",
         "scan_to_recycle": item["scan_url"]
     }
-
 
 @app.get("/")
 def root():

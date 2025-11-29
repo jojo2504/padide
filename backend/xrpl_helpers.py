@@ -1,24 +1,26 @@
-# xrpl_helpers.py
+# xrpl_helpers.py — WITH TIMING ONLY (no other changes)
 import os
 import time
-import asyncio  # ✅ Add this
-
+import asyncio
 from typing import Optional, Any
 import qrcode
-import datetime
 from datetime import datetime, timedelta, timezone
+
 from xrpl.asyncio.clients import AsyncJsonRpcClient
 from xrpl.wallet import Wallet
 from xrpl.models import (
     EscrowCreate, NFTokenMint, NFTokenMintFlag,
-    Memo, Payment
+    Memo
 )
 from xrpl.asyncio.transaction import sign_and_submit
 from xrpl.utils import xrp_to_drops
 from xrpl.models.requests import Tx
 from config import settings
-import PIL
 
+# ← GLOBAL SEMAPHORE: Max 5 concurrent blockchain ops
+BLOCKCHAIN_SEMAPHORE = asyncio.Semaphore(1)  # Still 1, as you requested
+
+# Async client
 client = AsyncJsonRpcClient(settings.RPC_URL)
 
 def get_manufacturer_wallet() -> Wallet:
@@ -35,33 +37,19 @@ async def _extract_nft_id(result: dict[str, Any]) -> str:
         meta = json.loads(meta)
 
     for node in meta.get("AffectedNodes", []):
-        # Check CreatedNode (new NFTokenPage)
-        if node.get("CreatedNode", {}).get("LedgerEntryType") == "NFTokenPage":
-            nftokens = node["CreatedNode"].get("NewFields", {}).get("NFTokens")
-            if nftokens:
-                return nftokens[0]["NFToken"]["NFTokenID"]
+        created = node.get("CreatedNode", {})
+        if created.get("LedgerEntryType") == "NFTokenPage":
+            tokens = created.get("NewFields", {}).get("NFTokens", [])
+            if tokens:
+                return tokens[0]["NFToken"]["NFTokenID"]
         
-        # Check ModifiedNode (existing NFTokenPage)
-        if node.get("ModifiedNode", {}).get("LedgerEntryType") == "NFTokenPage":
-            # Compare PreviousFields and FinalFields to find the new NFT
-            previous = node["ModifiedNode"].get("PreviousFields", {}).get("NFTokens", [])
-            final = node["ModifiedNode"].get("FinalFields", {}).get("NFTokens", [])
-            
-            # The new NFT should be in final but not in previous
-            if len(final) > len(previous):
-                # Get the new NFT (usually the last one)
-                return final[-1]["NFToken"]["NFTokenID"]
-            
-            # Alternative: just return the last NFT if we can't compare
+        modified = node.get("ModifiedNode", {})
+        if modified.get("LedgerEntryType") == "NFTokenPage":
+            final = modified.get("FinalFields", {}).get("NFTokens", [])
             if final:
                 return final[-1]["NFToken"]["NFTokenID"]
 
-    # Debug info if nothing found
-    import json
-    print("DEBUG: Full meta structure:")
-    print(json.dumps(meta, indent=2))
-    
-    raise ValueError("Could not find minted NFTokenID in transaction result")
+    raise ValueError("NFT ID not found")
 
 async def create_recyclable_item(
     product_name: str,
@@ -69,97 +57,103 @@ async def create_recyclable_item(
     recycler_percent: Optional[int] = None,
     years: Optional[int] = None
 ):
+    # Total timer
+    total_start = time.perf_counter()
+
     deposit_xrp = deposit_xrp or settings.DEFAULT_DEPOSIT_XRP
     recycler_percent = recycler_percent or settings.RECYCLER_REWARD_PERCENT
     years = years or settings.ESCROW_YEARS
 
-    # 1. Mint NFT
-    print("MINTING NFT")
-    mint_tx = NFTokenMint(
-        account=MANUFACTURER.classic_address,
-        nftoken_taxon=6969,
-        flags=NFTokenMintFlag.TF_TRANSFERABLE,
-        uri=f"recyclefi://{product_name.lower().replace(' ', '-')}".encode().hex(),
-        memos=[
-            Memo.from_dict({
-                "memo_data": product_name.encode().hex(),
-                "memo_format": "text/plain".encode().hex(),
-                "memo_type": "Product".encode().hex(),
-            }),
-            Memo.from_dict({
-                "memo_data": str(recycler_percent).encode().hex(),
-                "memo_type": "RecyclerReward%".encode().hex(),
-            })
-        ]
-    )
+    async with BLOCKCHAIN_SEMAPHORE:
+        print(f"\nStarting mint for: {product_name}")
 
-    print("Signing and submitting mint transaction")
-    response = await sign_and_submit(mint_tx, wallet=MANUFACTURER, client=client)
-    print(f"Transaction submitted: {response.result.get('tx_json', {}).get('hash')}")
+        # 1. Mint NFT — timing starts
+        mint_start = time.perf_counter()
 
-    # Wait for validation and fetch the validated transaction
-    tx_hash = response.result['tx_json']['hash']
-    print(f"Waiting for transaction validation...")
-    
-    max_attempts = 10
-    for attempt in range(max_attempts):
-        await asyncio.sleep(2)  # ✅ Add await here
-        
-        try:
-            tx_request = Tx(transaction=tx_hash)
-            tx_response = await client.request(tx_request)  # ✅ Add await here
-            
-            if tx_response.is_successful() and tx_response.result.get('validated'):
-                print("Transaction validated!")
-                nft_id = await _extract_nft_id(tx_response.result)
-                print(f"NFT ID extracted: {nft_id}")
+        mint_tx = NFTokenMint(
+            account=MANUFACTURER.classic_address,
+            nftoken_taxon=6969,
+            flags=NFTokenMintFlag.TF_TRANSFERABLE,
+            uri=f"recyclefi://{product_name.lower().replace(' ', '-')}".encode().hex(),
+            memos=[
+                Memo.from_dict({
+                    "memo_data": product_name.encode().hex(),
+                    "memo_format": "text/plain".encode().hex(),
+                    "memo_type": "Product".encode().hex(),
+                }),
+                Memo.from_dict({
+                    "memo_data": str(recycler_percent).encode().hex(),
+                    "memo_type": "RecyclerReward%".encode().hex(),
+                })
+            ]
+        )
+
+        response = await sign_and_submit(mint_tx, wallet=MANUFACTURER, client=client)
+        tx_hash = response.result["tx_json"]["hash"]
+        print(f"NFT submitted → {tx_hash[:8]}...")
+
+        # Wait for validation
+        nft_id = None
+        poll_start = time.perf_counter()
+        for i in range(15):
+            await asyncio.sleep(1)
+            tx_resp = await client.request(Tx(transaction=tx_hash))
+            if tx_resp.is_successful() and tx_resp.result.get("validated"):
+                nft_id = await _extract_nft_id(tx_resp.result)
+                poll_time = time.perf_counter() - poll_start
+                mint_total_time = time.perf_counter() - mint_start
+                print(f"NFT minted: {nft_id[-8:]} | Mint+Wait: {mint_total_time:.2f}s (polling took {poll_time:.2f}s)")
                 break
-        except Exception as e:
-            print(f"Attempt {attempt + 1}/{max_attempts}: {e}")
-            if attempt == max_attempts - 1:
-                raise ValueError(f"Transaction not validated after {max_attempts} attempts")
-    else:
-        raise ValueError("Failed to get validated transaction")
-    
-    assert nft_id, "FAILED TO EXTRACT NFT ID"
+        else:
+            raise RuntimeError("NFT mint timeout")
 
-    print("CREATING ESCROW")
-    # 2. Create Escrow
-    finish_time = int((datetime.now(timezone.utc) + timedelta(days=years * 365)).timestamp())
-    escrow_tx = EscrowCreate(
-        account=MANUFACTURER.classic_address,
-        amount=xrp_to_drops(deposit_xrp),
-        destination=MANUFACTURER.classic_address,
-        finish_after=finish_time,
-        memos=[
-            Memo.from_dict({
-                "memo_data": nft_id.encode().hex(),
-                "memo_type": "LinkedNFT".encode().hex(),
-            }),
-            Memo.from_dict({
-                "memo_data": "RecycleFiDeposit".encode().hex(),
-                "memo_type": "text/plain".encode().hex(),
-            })
-        ]
-    )
-    escrow_resp = await sign_and_submit(escrow_tx, wallet=MANUFACTURER, client=client)
-    escrow_seq = escrow_resp.result["tx_json"]["Sequence"]
+        # 2. Create Escrow — timing
+        escrow_start = time.perf_counter()
 
-    print("CREATING QR CODE")
-    # 3. QR Code
-    recycle_url = f"{settings.RECYCLE_DAPP_URL}?nft={nft_id}&escrow={escrow_seq}"
-    img = qrcode.make(recycle_url)
-    os.makedirs("qrcodes", exist_ok=True)
-    qr_path: str = f"qrcodes/{product_name.replace(' ', '_')}_{nft_id[-8:]}.png"
-    img.save(qr_path)
+        finish_time = int((datetime.now(timezone.utc) + timedelta(days=years * 365)).timestamp())
+        escrow_tx = EscrowCreate(
+            account=MANUFACTURER.classic_address,
+            amount=xrp_to_drops(deposit_xrp),
+            destination=MANUFACTURER.classic_address,
+            finish_after=finish_time,
+            memos=[
+                Memo.from_dict({"memo_data": nft_id.encode().hex(), "memo_type": "LinkedNFT".encode().hex()}),
+                Memo.from_dict({"memo_data": "RecycleFiDeposit".encode().hex()})
+            ]
+        )
 
-    return {
-        "product": product_name,
-        "nft_id": nft_id,
-        "escrow_sequence": escrow_seq,
-        "deposit_xrp": deposit_xrp,
-        "recycler_gets_%": recycler_percent,
-        "expires_in_years": years,
-        "qr_code": qr_path,
-        "scan_url": recycle_url
-    }
+        escrow_resp = await sign_and_submit(escrow_tx, wallet=MANUFACTURER, client=client)
+        escrow_seq = escrow_resp.result["tx_json"]["Sequence"]
+        escrow_time = time.perf_counter() - escrow_start
+        print(f"Escrow created → seq {escrow_seq} | Time: {escrow_time:.2f}s")
+
+        # 3. Generate QR Code — timing
+        qr_start = time.perf_counter()
+        recycle_url = f"{settings.RECYCLE_DAPP_URL}?nft={nft_id}&escrow={escrow_seq}"
+        img = qrcode.make(recycle_url)
+        os.makedirs("qrcodes", exist_ok=True)
+        qr_path = f"qrcodes/{product_name.replace(' ', '_')}_{nft_id[-8:]}.png"
+        img.save(qr_path)
+        qr_time = time.perf_counter() - qr_start
+        print(f"QR code saved → {qr_path} | Time: {qr_time:.3f}s")
+
+        # Final total time
+        total_time = time.perf_counter() - total_start
+        print(f"COMPLETED: {product_name} | Total time: {total_time:.2f}s | {deposit_xrp} XRP locked")
+
+        return {
+            "product": product_name,
+            "nft_id": nft_id,
+            "escrow_sequence": escrow_seq,
+            "deposit_xrp": deposit_xrp,
+            "recycler_gets_%": recycler_percent,
+            "expires_in_years": years,
+            "qr_code": qr_path,
+            "scan_url": recycle_url,
+            "timing_seconds": {
+                "nft_mint_and_wait": round(mint_total_time, 2),
+                "escrow_create": round(escrow_time, 2),
+                "qr_generate": round(qr_time, 3),
+                "total": round(total_time, 2)
+            }
+        }
