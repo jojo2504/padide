@@ -25,12 +25,12 @@ CONSUMER_SEED = "sEdTfzsWzEnC1gnxd9ViJJZWW7f9haB"
 APPLE_SEED    = "sEdTU4Cz4Shq54WmTT28enFDTVkrHPh"
 
 # <<<=== PUT THE REAL RUSD ISSUER SEED HERE FOR MINTING ===>>>
-# RUSD_ISSUER_SEED = "sEdTrW7WqZMVCcbbQ7pbrUsstcCEwoV"   # ← Verify this matches issuer
-RUSD_ISSUER      = "rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV"
-RUSD_HEX         = "5255554400000000000000000000000000000000"  # "RUSD"
+RUSD_ISSUER_SEED = "sEdS6XgjbcWdAedtt4mcNDyZqX9E7vv"   # ← Verify this matches issuer
+RUSD_ISSUER      = "rEfT7xJtREcwJtKydXQXoMALPaeDLkuQP1"
+RUSD_HEX         = "5255534400000000000000000000000000000000"  # "RUSD"
 
 # RecycleFi configuration
-CONSUMER_PAYMENT_XRP = 1  # Consumer pays 1 XRP
+CONSUMER_PAYMENT_XRP = 50  # Consumer pays 1 XRP
 AMM_DEPOSIT_PERCENT = 0.05  # 5% of payment goes to AMM for yield
 
 print("=" * 60)
@@ -48,7 +48,7 @@ print(f"✓ Apple wallet loaded: {apple_wallet.classic_address}")
 
 # Safe issuer wallet creation
 try:
-    issuer_wallet = RUSD_ISSUER
+    issuer_wallet = Wallet.from_seed(RUSD_ISSUER_SEED)
     can_mint = (issuer_wallet.classic_address == RUSD_ISSUER)
     print(f"✓ Issuer wallet loaded: {issuer_wallet.classic_address}")
     print(f"  Issuer seed matches expected address: {can_mint}")
