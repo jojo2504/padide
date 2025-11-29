@@ -1,0 +1,27 @@
+{
+  "include": ["backend"],
+  "exclude": ["**/__pycache__", "venv", ".venv", "static", "hook"],
+  "venvPath": ".",
+  "venv": "venv",
+
+  // ←←← CHOOSE ONLY ONE OF THESE THREE LEVELS ←←←
+
+  // Level 1 – Speedrun (almost zero red lines)
+  "typeCheckingMode": "off",
+
+  // Level 2 – Recommended for hackathon (default I use)
+  // "typeCheckingMode": "basic",
+
+  // Level 3 – Nuclear strict mode (zero warnings)
+  // "typeCheckingMode": "strict",
+
+  // Extra strict rules (only needed for Level 3)
+  "strictListInference": true,
+  "strictDictionaryInference": true,
+  "strictSetInference": true,
+  "reportUnknownMemberType": true,
+  "reportUnknownArgumentType": true,
+  "reportUnknownVariableType": true,
+  "reportMissingTypeArgument": true,
+  "reportOptionalMemberAccess": true
+}

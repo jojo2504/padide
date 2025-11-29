@@ -1,0 +1,9 @@
+{
+    // Python + Pyright
+    "python.defaultInterpreterPath": "./venv/bin/python",
+    // Nice extras for hackathons
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+}
