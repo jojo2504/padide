@@ -132,7 +132,7 @@ async def create_recyclable_item(
         recycle_url = f"{settings.RECYCLE_DAPP_URL}?nft={nft_id}&escrow={escrow_seq}"
         img = qrcode.make(recycle_url)
         os.makedirs("qrcodes", exist_ok=True)
-        qr_path = f"qrcodes/{product_name.replace(' ', '_')}_{nft_id[-8:]}.png"
+        qr_path: str = f"qrcodes/{product_name.replace(' ', '_')}_{nft_id[-8:]}.png"
         img.save(qr_path)
         qr_time = time.perf_counter() - qr_start
         print(f"QR code saved → {qr_path} | Time: {qr_time:.3f}s")
