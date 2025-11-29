@@ -6,7 +6,7 @@ import xrpl.transaction
 from xrpl.models import Payment, Memo, Transaction
 from xrpl.utils import xrp_to_drops, drops_to_xrp
 from xrpl.clients import JsonRpcClient
-from typing import Optional, Set
+from typing import Any, Dict, Optional, Set
 import time
 import json
 import os
@@ -134,9 +134,9 @@ async def find_escrow_by_nft_memo(nft_id: str):
 @app.post("/api/v1/factory/produce")
 async def factory_produce(
     product_name: str = Form("Plastic Bottle"),
-    deposit_xrp: float = Form(10.0)
+    deposit_xrp: float = Form(0.00001)
 ):
-    item = create_recyclable_item(
+    item = await create_recyclable_item(
         product_name=product_name,
         deposit_xrp=deposit_xrp
     )
