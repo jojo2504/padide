@@ -1,44 +1,47 @@
-# config.py
-import os
-from pathlib import Path
+# config.py — Clean & Updated for RecycleFi v3 (2025)
+from pydantic_settings import BaseSettings
 from typing import Optional
-from dotenv import load_dotenv
 
-# Load .env (works both locally and in Docker)
-BASE_DIR = Path(__file__).resolve().parent
-env_path = BASE_DIR / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
 
-class Settings:
-    # XRPL
-    NETWORK: str = os.getenv("XRPL_NETWORK", "testnet").lower()
-    RPC_URL: str = os.getenv(
-        "XRPL_RPC_URL",
-        "https://s.altnet.rippletest.net:51234" if NETWORK == "testnet"
-        else "https://xrplcluster.com"
-    )
+class Settings(BaseSettings):
+    # ───────────────────────────────
+    # XRPL Network
+    # ───────────────────────────────
+    NETWORK: str = "testnet"  # auto-detected from RPC_URL if needed
+    RPC_URL: str = "https://s.altnet.rippletest.net:51234/"
 
-    # Wallets
-    MANUFACTURER_SEED: Optional[str] = os.getenv("MANUFACTURER_SEED")
+    # ───────────────────────────────
+    # Protocol Wallet (Factory / You)
+    # ───────────────────────────────
+    RECYCLEFI_SEED: str = ""  # this is us
 
-    # RecycleFi logic
-    DEFAULT_DEPOSIT_XRP: float = float(os.getenv("DEFAULT_DEPOSIT_XRP", "10.0"))
-    RECYCLER_REWARD_PERCENT: int = int(os.getenv("RECYCLER_REWARD_PERCENT", "70"))
-    ESCROW_YEARS: int = int(os.getenv("ESCROW_YEARS", "10"))
+    # ───────────────────────────────
+    # Business Logic
+    # ───────────────────────────────
+    DEPOSIT_PERCENT: float = 6.0        # % of purchase locked in AMM
+    RECYCLER_REWARD_PCT: int = 70       # % of AMM withdrawal → recycler
+    COMPANY_BONUS_PCT: int = 20         # % → partner (Apple, etc.)
+    PROTOCOL_FEE_PCT: int = 10          # % → you (second bite!)
 
-    # AMM
-    AMM_TOKEN_ISSUER: str = os.getenv("AMM_TOKEN_ISSUER", "")
-    AMM_TOKEN_CURRENCY: str = os.getenv("AMM_TOKEN_CURRENCY", "GRN")
+    # ───────────────────────────────
+    # AMM Pool (XRP + Stablecoin)
+    # ───────────────────────────────
+    STABLECOIN_CURRENCY: str = "5255534400000000000000000000000000000000"  # RUSD hex
+    STABLECOIN_ISSUER: str = "rEfT7xJtREcwJtKydXQXoMALPaeDLkuQP1"
 
+    # ───────────────────────────────
     # Frontend
-    RECYCLE_DAPP_URL: str = os.getenv(
-        "RECYCLE_DAPP_URL",
-        "https://padide-vercel.vercel.app"
-    )
+    # ───────────────────────────────
+    RECYCLE_DAPP_URL: str = "http://localhost:3000"
 
-    @property
-    def is_testnet(self) -> bool:
-        return "testnet" in self.NETWORK
+    # Optional: default company wallet (can be overridden per purchase)
+    DEFAULT_COMPANY_WALLET: Optional[str] = None
 
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+
+# Create singleton
 settings = Settings()

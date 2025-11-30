@@ -1,159 +1,241 @@
-# main.py
-from fastapi import FastAPI, Form, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
+# main.py — RecycleFi v3 — Burn NFT to Claim AMM Yield (No State, Infinite Scale)
+from fastapi import FastAPI, Form, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
-import xrpl.transaction
-from xrpl.models import Payment, Memo, Transaction
-from xrpl.utils import xrp_to_drops, drops_to_xrp
-from xrpl.clients import JsonRpcClient
-from typing import Any, Dict, Optional, Set
-import time
-import json
 import os
+from typing import Optional
 
-from xrpl_helpers import client, MANUFACTURER, create_recyclable_item
+from xrpl.asyncio.clients import AsyncJsonRpcClient
+from xrpl.asyncio.transaction import autofill, sign, submit_and_wait
+from xrpl.models import (
+    Payment, Memo, AMMDeposit, AMMWithdraw, IssuedCurrencyAmount,
+    AMMDepositFlag, AMMWithdrawFlag, NFTokenBurn
+)
+from xrpl.models.requests import AccountTx, AMMInfo, Tx
+from xrpl.models.currencies import XRP, IssuedCurrency
+from xrpl.utils import xrp_to_drops
+from xrpl.wallet import Wallet
+
+from xrpl_helpers import client, RECYCLEFI, create_recyclable_item_v3
 from config import settings
 
 app = FastAPI(
-    title="RecycleFi – Recycle-to-Earn Backend",
-    description="QR → Instant XRP Reward on XRPL",
-    version="1.0"
+    title="RecycleFi v3 — Burn-to-Earn from AMM Yield",
+    description="6% of purchase → AMM → Burn NFT → Claim Yield + Bonus",
+    version="3.0"
 )
 
-# Cache for quick lookup (in production: use Redis or DB)
-RECYCLED_NFTS: Set[str] = set()
+# Stablecoin config
+CUSD_HEX = "4355534400000000000000000000000000000000"  # CUSD
+CUSD_ISSUER = "rpWYyReCdfisZEd99q14gg96NrAEpcauMt"
+CUSD_CURRENCY = IssuedCurrencyAmount(currency=CUSD_HEX, issuer=CUSD_ISSUER, value="0")
 
-class RecycleRequest(BaseModel):
-    nft_id: str
-    user_wallet: str  # XRPL address from frontend (r...)
-    proof_photo_url: Optional[str] = None  # Optional for demo
+XRP_ASSET = XRP()
+CUSD_ASSET = IssuedCurrency(currency=CUSD_HEX, issuer=CUSD_ISSUER)
 
-@app.post("/api/v1/recycle")
-async def recycle_item(request: RecycleRequest):
-    nft_id = request.nft_id.upper()
-    user_wallet = request.user_wallet.strip()
+class BurnClaimRequest(BaseModel):
+    nft_id: str           # Full NFTokenID (e.g. 000813...)
+    user_wallet: str      # r...
+    burn_tx_hash: str     # Hash of NFTokenBurn transaction
 
-    # 1. Basic validation
-    if not user_wallet.startswith("r"):
-        raise HTTPException(400, "Invalid XRPL wallet address")
 
-    if nft_id in RECYCLED_NFTS:
-        raise HTTPException(400, "This item was already recycled!")
-
-    # 2. Find the linked Escrow via memo scanning (fast for demo)
-    # In production: store escrow_sequence ↔ nft_id in DB
-    escrow_info = await find_escrow_by_nft_memo(nft_id)
-    if not escrow_info:
-        raise HTTPException(404, "No active deposit found for this product")
-
-    escrow_account = escrow_info["account"]
-    escrow_seq = escrow_info["sequence"]
-    original_deposit = float(drops_to_xrp(escrow_info["amount"]))
-
-    # 3. Calculate reward (70% to user, 30% back to manufacturer)
-    user_reward = original_deposit * (settings.RECYCLER_REWARD_PERCENT / 100)
-    manufacturer_keeps = original_deposit - user_reward
-
-    print(f"Recycling {nft_id[-8:]}")
-    print(f"  → User {user_wallet[:8]}... gets {user_reward:.3f} XRP")
-    print(f"  → Factory keeps {manufacturer_keeps:.3f} XRP")
-
-    # 4. Release escrow + split funds
+async def find_deposit_by_nft_id(nft_id: str) -> dict | None:
+    """Find AMMDeposit that contains this NFT ID in its memo"""
     try:
-        # Step 1: Cancel escrow (releases full amount to issuer)
-        cancel_tx = xrpl.models.EscrowCancel(
-            account=MANUFACTURER.classic_address,
-            owner=MANUFACTURER.classic_address,
-            offer_sequence=escrow_seq
-        )
-        cancel_resp = xrpl.transaction.sign_and_submit(cancel_tx, MANUFACTURER, client)
-        time.sleep(5)
+        resp = await client.request(AccountTx(
+            account=RECYCLEFI.classic_address,
+            limit=1000
+        ))
+    except:
+        return None
 
-        # Step 2: Pay user their reward
-        pay_user = Payment(
-            account=MANUFACTURER.classic_address,
-            destination=user_wallet,
-            amount=xrp_to_drops(user_reward),
-            memos=[
-                Memo.from_dict({
-                    "memo_type": "52656379636C65".encode().hex(),  # "Recycle"
-                    "memo_data": "Thanks for recycling!".encode().hex(),
-                }),
-                Memo.from_dict({
-                    "memo_data": nft_id.encode().hex(),
-                    "memo_type": "NFT".encode().hex(),
-                })
-            ]
-        )
-        pay_resp = xrpl.transaction.sign_and_submit(pay_user, MANUFACTURER, client)
+    target_hex = nft_id.upper().encode("utf-8").hex().upper()
 
-        # Mark as recycled
-        RECYCLED_NFTS.add(nft_id)
+    for entry in resp.result["transactions"]:
+        tx = entry.get("tx") or entry.get("tx_json", {})
+        meta = entry.get("meta", {})
 
-        return JSONResponse({
-            "success": True,
-            "message": "Recycled successfully! Reward sent!",
-            "reward_xrp": round(user_reward, 3),
-            "user_wallet": user_wallet,
-            "nft_id": nft_id,
-            "tx_hash_reward": pay_resp.result["hash"],
-            "explorer": f"https://test.bithomp.com/explorer/{pay_resp.result['hash']}"
-        })
-
-    except Exception as e:
-        raise HTTPException(500, f"Transaction failed: {str(e)}")
-
-
-# Helper: Find escrow by scanning memos (works perfectly for <1000 items)
-async def find_escrow_by_nft_memo(nft_id: str):
-    account_tx = client.request(xrpl.models.AccountTx(
-        account=MANUFACTURER.classic_address,
-        limit=400
-    )).result
-
-    target = nft_id.encode().hex()
-
-    for tx in account_tx["transactions"]:
-        if tx["tx"]["TransactionType"] != "EscrowCreate":
+        if tx.get("TransactionType") != "AMMDeposit":
             continue
-        if "meta" not in tx or tx["meta"].get("TransactionResult") != "tesSUCCESS":
+        if meta.get("TransactionResult") != "tesSUCCESS":
             continue
 
-        memos = tx["tx"].get("Memos", [])
-        for memo in memos:
-            data = memo["Memo"].get("MemoData", "")
-            if data.lower() == target.lower():
+        for memo in tx.get("Memos", []):
+            data = memo["Memo"].get("MemoData", "").upper()
+            if data == target_hex:
                 return {
-                    "account": tx["tx"]["Account"],
-                    "sequence": tx["tx"]["Sequence"],
-                    "amount": tx["tx"]["Amount"]
+                    "tx": tx,
+                    "meta": meta,
+                    "amm_account": meta.get("amm_account")
                 }
     return None
 
-@app.post("/api/v1/factory/produce")
-async def factory_produce(
-    product_name: str = Form("Plastic Bottle"),
-    deposit_xrp: float = Form(0.00001)
+
+async def get_lp_balance() -> float:
+    try:
+        info = await client.request(AMMInfo(asset=XRP_ASSET, asset2=CUSD_ASSET))
+        lp_token = info.result["amm"]["lp_token"]
+        for bal in lp_token.get("balance", []):
+            if bal["account"] == RECYCLEFI.classic_address:
+                return float(bal["value"])
+        return 0.0
+    except Exception as e:
+        print(f"AMMInfo failed: {e}")
+        return 0.0
+
+
+@app.post("/api/v1/recycle")
+async def recycle_burn_claim(request: BurnClaimRequest):
+    nft_id = request.nft_id.strip().upper()
+    user_wallet = request.user_wallet.strip()
+    burn_hash = request.burn_tx_hash.strip()
+
+    if not user_wallet.startswith("r"):
+        raise HTTPException(400, "Invalid wallet")
+
+    # 1. Verify burn transaction
+    try:
+        tx_resp = await client.request(Tx(transaction=burn_hash))
+        tx = tx_resp.result
+
+        if tx.get("TransactionType") != "NFTokenBurn":
+            raise ValueError("Not a burn")
+        if not tx.get("validated", False):
+            raise HTTPException(400, "Burn not confirmed yet")
+        if tx["NFTokenID"].upper() != nft_id:
+            raise ValueError("Wrong NFT burned")
+        if tx["Account"] != user_wallet:
+            raise HTTPException(403, "You didn't burn this NFT")
+
+        print(f"NFT {nft_id[-8:]} burned by {user_wallet[:8]}...")
+    except Exception as e:
+        raise HTTPException(400, f"Burn verification failed: {e}")
+
+    # 2. Find associated AMM deposit
+    deposit = await find_deposit_by_nft_id(nft_id)
+    if not deposit:
+        raise HTTPException(404, "No deposit found for this NFT")
+
+    # 3. Withdraw all liquidity + yield
+    lp_balance = await get_lp_balance()
+    if lp_balance <= 0:
+        raise HTTPException(400, "No liquidity to claim")
+
+    try:
+        withdraw_tx = AMMWithdraw(
+            account=RECYCLEFI.classic_address,
+            asset=XRP_ASSET,        # ← OBJECT
+            asset2=CUSD_ASSET,      # ← OBJECT
+            lp_token_in=IssuedCurrencyAmount(
+                currency=lp_token["currency"],
+                issuer=lp_token["account"],
+                value=str(lp_balance)
+            ),
+            flags=AMMWithdrawFlag.TF_WITHDRAW_ALL
+        )
+        filled = await autofill(withdraw_tx, client)
+        signed = sign(filled, RECYCLEFI)
+        result = await submit_and_wait(signed, client)
+
+        if result.result["meta"]["TransactionResult"] != "tesSUCCESS":
+            raise Exception("Withdraw failed")
+    except Exception as e:
+        raise HTTPException(500, f"AMM withdraw failed: {e}")
+
+    # 4. Distribute rewards (example split)
+    total_withdrawn_xrp = 0.36  # In real: calculate from balance change
+    yield_earned = total_withdrawn_xrp * 0.15  # example
+
+    recycler_reward = total_withdrawn_xrp * 0.70
+    company_bonus = total_withdrawn_xrp * 0.20
+    protocol_fee = total_withdrawn_xrp * 0.10
+
+    async def send_payment(dest: str, amount: float, label: str):
+        tx = Payment(
+            account=RECYCLEFI.classic_address,
+            destination=dest,
+            amount=xrp_to_drops(amount),
+            memos=[Memo.from_dict({
+                "memo_data": f"RecycleFi Reward: {nft_id[-8:]}".encode().hex(),
+                "memo_type": "Recycle".encode().hex()
+            })]
+        )
+        signed = sign(await autofill(tx, client), RECYCLEFI)
+        await submit_and_wait(signed, client)
+        print(f"Sent {amount:.3f} XRP → {label}")
+
+    await send_payment(user_wallet, recycler_reward, "Recycler")
+    await send_payment(settings.COMPANY_WALLET, company_bonus, "Company Bonus")
+    # protocol_fee stays in wallet
+
+    return JSONResponse({
+        "success": True,
+        "nft_id": nft_id,
+        "burn_tx": burn_hash,
+        "recycler_reward_xrp": round(recycler_reward, 4),
+        "company_bonus_xrp": round(company_bonus, 4),
+        "protocol_fee_xrp": round(protocol_fee, 4),
+        "yield_earned_xrp": round(yield_earned, 4),
+        "message": "NFT burned → reward claimed from AMM yield!",
+        "explorer": f"https://test.bithomp.com/explorer/{burn_hash}"
+    })
+
+@app.post("/api/v1/purchase")
+async def process_circular_purchase(
+    product_name: str = Form("Eco Bottle"),
+    price_xrp: float = Form(5.0),
+    deposit_percent: float = Form(6.0),
+    company_wallet: str = Form(...),
+    consumer_wallet: str = Form(...),
+    metadata: Optional[str] = Form(None)
 ):
-    item = await create_recyclable_item(
+    item = await create_recyclable_item_v3(
         product_name=product_name,
-        deposit_xrp=deposit_xrp
+        price_xrp=price_xrp,
+        deposit_percent=deposit_percent,
+        company_wallet=company_wallet,
+        consumer_wallet=consumer_wallet
     )
+
+    # Pay company 93% instantly
+    company_share = price_xrp * 0.93
+    pay_tx = Payment(
+        account=RECYCLEFI.classic_address,
+        destination=company_wallet,
+        amount=xrp_to_drops(company_share)
+    )
+    signed = sign(await autofill(pay_tx, client), RECYCLEFI)
+    await submit_and_wait(signed, client)
+
     return {
         "success": True,
-        "product": product_name,
+        "purchase_id": item["purchase_id"],
         "nft_id": item["nft_id"],
-        "qr_code": f"/qrcodes/{os.path.basename(item['qr_code'])}",
-        "scan_to_recycle": item["scan_url"]
+        "total_price_xrp": price_xrp,
+        "company_received_xrp": round(company_share, 6),
+        "locked_in_amm_xrp": item["deposit_xrp"],
+        "protocol_fee_xrp": round(price_xrp * 0.01, 6),
+        "qr_code": item["qr_url"],
+        "scan_to_recycle_url": item["recycle_url"],
+        "burn_to_claim": True
     }
+
+
+@app.get("/qrcodes/{filename}")
+async def get_qr(filename: str):
+    path = f"qrcodes/{filename}"
+    if os.path.exists(path):
+        return FileResponse(path)
+    raise HTTPException(404, "QR not found")
+
 
 @app.get("/")
 def root():
     return {
-        "project": "RecycleFi - QR Code → Instant XRP Reward",
+        "project": "RecycleFi v3 — Burn-to-Earn",
         "status": "running",
-        "network": settings.NETWORK.upper(),
-        "recycler_reward": f"{settings.RECYCLER_REWARD_PERCENT}%",
-        "total_recycled": len(RECYCLED_NFTS),
+        "model": "6% purchase → AMM → Burn NFT → Claim Yield",
+        "proof": "NFT Burn = Permanent On-Chain Recycling Proof",
+        "scale": "Infinite (zero state)",
         "docs": "/docs"
     }
