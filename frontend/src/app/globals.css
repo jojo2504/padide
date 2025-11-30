@@ -627,3 +627,37 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =====================================================
+   QR SCANNER ANIMATIONS
+   ===================================================== */
+
+@keyframes scan {
+  0% {
+    top: 10%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 90%;
+    opacity: 0;
+  }
+}
+
+.animate-scan {
+  animation: scan 2s ease-in-out infinite;
+}
+
+/* html5-qrcode custom styles */
+#qr-shaded-region {
+  border: none !important;
+}
+
+#qr-shaded-region > div {
+  display: none !important;
+}

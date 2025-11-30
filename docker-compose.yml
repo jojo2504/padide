@@ -8,6 +8,10 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
 
   backend:
     build:
@@ -17,6 +21,10 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/qrcodes:/app/qrcodes
-      - ./backend/proofs:/app/proofs
+      - ./backend/product_images:/app/product_images
+      - ./backend/product_metadata:/app/product_metadata
+    env_file:
+      - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - RECYCLE_DAPP_URL=http://localhost:3000

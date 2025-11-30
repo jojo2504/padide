@@ -1,7 +1,8 @@
-import type { Metadata } from 'next';
-import { Playfair_Display, JetBrains_Mono, Inter, Space_Grotesk } from 'next/font/google';
-import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { LenisProvider } from '@/components/providers/LenisProvider';
+import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { WalletProvider } from '@/lib/wallet-context';
+import type { Metadata } from 'next';
+import { Inter, JetBrains_Mono, Playfair_Display, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 
 // Display font - Emotional words
@@ -72,9 +73,11 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange={false}
         >
-          <LenisProvider>
-            {children}
-          </LenisProvider>
+          <WalletProvider>
+            <LenisProvider>
+              {children}
+            </LenisProvider>
+          </WalletProvider>
         </ThemeProvider>
       </body>
     </html>

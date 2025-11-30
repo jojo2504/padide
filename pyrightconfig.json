@@ -3,6 +3,7 @@
   "exclude": ["**/__pycache__", "venv", ".venv", "static", "hook"],
   "venvPath": ".",
   "venv": "venv",
+  "extraPaths": ["backend"],
 
   // Pick one
   "typeCheckingMode": "off",

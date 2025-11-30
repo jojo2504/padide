@@ -18,7 +18,7 @@ RUN uv venv .venv && \
 COPY . . 
 
 # Create folders
-RUN mkdir -p qrcodes proofs
+RUN mkdir -p qrcodes product_images product_metadata
 
 # Expose port
 EXPOSE 8000
@@ -26,5 +26,5 @@ EXPOSE 8000
 # Set PATH to include venv binaries
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Run with venv python
-CMD ["python", "main.py"]
+# Run FastAPI with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

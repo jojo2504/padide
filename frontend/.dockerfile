@@ -1,4 +1,4 @@
-FROM node:25-bookworm-slim
+FROM node:20-slim
 
 WORKDIR /app
 
@@ -8,9 +8,10 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy the rest of the application (dependencies and other stuff)
+# Copy the rest of the application
 COPY . .
 
-EXPOSE 5173
+EXPOSE 3000
 
+# Run Next.js dev server
 CMD ["npm", "run", "dev"]

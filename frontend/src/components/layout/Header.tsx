@@ -1,25 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTheme } from 'next-themes';
-import { motion } from 'framer-motion';
-import clsx from 'clsx';
-import Link from 'next/link';
-import Image from 'next/image';
+import { RoleSelector } from '@/components/layout/RoleSelector';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
-
-// Wallet addresses for role detection
-const WALLET_ROLES = {
-  factory: 'rfHrTMepc23WLFgnFtxpd1LPa52sT7qKoK',
-  client: 'rMwm4mhdGKXUiJA4MRdWzgx81g7LBKg8iX',
-  recycler: 'rnYrUUuqgU5PddJVBu8Hitsw9ejPheKhLd',
-};
+import { WalletLoginModal } from '@/components/wallet/WalletLoginModal';
+import { getRoleIcon, useWallet } from '@/lib/wallet-context';
+import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { useTheme } from 'next-themes';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export function Header() {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const { address, role, isConnected, disconnect } = useWallet();
   const isDark = resolvedTheme === 'dark';
 
   useEffect(() => {
@@ -33,27 +30,19 @@ export function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Determine the recycle page based on connected wallet
-  const getRecyclePath = () => {
-    if (!connectedWallet) return '/recycle';
-    if (connectedWallet === WALLET_ROLES.factory) return '/recycle/factory';
-    if (connectedWallet === WALLET_ROLES.client) return '/recycle/client';
-    if (connectedWallet === WALLET_ROLES.recycler) return '/recycle/recycler';
-    return '/recycle';
-  };
-
-  // Simulate wallet connection (for demo purposes)
-  const handleConnectWallet = () => {
-    // For demo, cycle through wallets or connect
-    const wallets = [null, WALLET_ROLES.factory, WALLET_ROLES.client, WALLET_ROLES.recycler];
-    const currentIndex = wallets.indexOf(connectedWallet);
-    const nextIndex = (currentIndex + 1) % wallets.length;
-    setConnectedWallet(wallets[nextIndex]);
+  const handleWalletClick = () => {
+    if (isConnected) {
+      disconnect();
+    } else {
+      setShowWalletModal(true);
+    }
   };
 
   if (!mounted) return null;
 
   return (
+    <>
+    <WalletLoginModal isOpen={showWalletModal} onClose={() => setShowWalletModal(false)} />
     <motion.header
       initial={{ y: -100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
@@ -124,36 +113,31 @@ export function Header() {
 
           {/* CTA Buttons */}
           <div className="flex items-center gap-3">
-            {/* Recycle Product Button */}
-            <Link
-              href={getRecyclePath()}
-              className={clsx(
-                'hidden sm:flex items-center gap-2 px-4 py-2 rounded-full font-mono text-xs tracking-wider uppercase transition-all border',
-                isDark
-                  ? 'border-night-neon-green/50 text-night-neon-green hover:bg-night-neon-green/10'
-                  : 'border-day-accent/50 text-day-accent hover:bg-day-accent/10'
-              )}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Recycle Product
-            </Link>
+            {/* Role Selector Dropdown */}
+            <RoleSelector />
 
             {/* Connect Wallet / Launch App */}
             <button 
-              onClick={handleConnectWallet}
+              onClick={handleWalletClick}
               className={clsx(
-                'hidden sm:block px-4 py-2 rounded-full font-mono text-xs tracking-wider uppercase transition-all',
-                isDark
-                  ? 'bg-night-neon-green text-night-bg hover:shadow-neon-green'
-                  : 'bg-day-accent text-white hover:shadow-lg'
+                'hidden sm:flex items-center gap-2 px-4 py-2 rounded-full font-mono text-xs tracking-wider uppercase transition-all',
+                isConnected
+                  ? isDark
+                    ? 'bg-night-neon-green/20 border border-night-neon-green/50 text-night-neon-green hover:bg-night-neon-green/30'
+                    : 'bg-day-accent/10 border border-day-accent/50 text-day-accent hover:bg-day-accent/20'
+                  : isDark
+                    ? 'bg-night-neon-green text-night-bg hover:shadow-neon-green'
+                    : 'bg-day-accent text-white hover:shadow-lg'
               )}
             >
-              {connectedWallet 
-                ? `${connectedWallet.slice(0, 4)}...${connectedWallet.slice(-4)}`
-                : 'Connect'
-              }
+              {isConnected ? (
+                <>
+                  <span>{getRoleIcon(role)}</span>
+                  <span>{address?.slice(0, 4)}...{address?.slice(-4)}</span>
+                </>
+              ) : (
+                'Connect'
+              )}
             </button>
 
             {/* Theme Toggle */}
@@ -176,5 +160,6 @@ export function Header() {
         </div>
       </div>
     </motion.header>
+    </>
   );
 }
