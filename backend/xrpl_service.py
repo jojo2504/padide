@@ -20,6 +20,7 @@ from xrpl.models import (
     AccountInfo, AccountLines,
     NFTokenMint, NFTokenMintFlag,
 )
+from xrpl.models.currencies import XRP
 from xrpl.asyncio.transaction import sign_and_submit
 from xrpl.utils import xrp_to_drops, drops_to_xrp
 
@@ -152,7 +153,7 @@ class XRPLService:
         """Get current AMM pool info (XRP/CUSD)"""
         try:
             amm_info = await self.client.request(AMMInfo(
-                asset={"currency": "XRP"},
+                asset=XRP(),
                 asset2=IssuedCurrency(
                     currency=self.cusd_currency_code,
                     issuer=self.cusd_issuer
@@ -204,7 +205,7 @@ class XRPLService:
             # Single-sided deposit of CUSD
             deposit = AMMDeposit(
                 account=self.cyclr_wallet.classic_address,
-                asset={"currency": "XRP"},
+                asset=XRP(),
                 asset2=IssuedCurrency(
                     currency=self.cusd_currency_code,
                     issuer=self.cusd_issuer
@@ -269,7 +270,7 @@ class XRPLService:
             # Withdraw by burning LP tokens
             withdraw = AMMWithdraw(
                 account=self.cyclr_wallet.classic_address,
-                asset={"currency": "XRP"},
+                asset=XRP(),
                 asset2=IssuedCurrency(
                     currency=self.cusd_currency_code,
                     issuer=self.cusd_issuer

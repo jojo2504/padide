@@ -77,7 +77,9 @@ def buy_product():
 
 
 async def transfer_nft_to_consumer(nft_id: str):
-    print("   Transferring NFT to consumer...")
+    print("   Transferring NFT to consumer (0 XRP offer)...")
+
+    # Step 1: Create 0 XRP offer
     offer_tx = NFTokenCreateOffer(
         account=recyclefi.classic_address,
         nftoken_id=nft_id,
@@ -87,10 +89,30 @@ async def transfer_nft_to_consumer(nft_id: str):
     )
     signed = sign(await autofill(offer_tx, client), recyclefi)
     resp = await submit_and_wait(signed, client)
-    offer_index = resp.result["meta"]["AffectedNodes"][0]["CreatedNode"]["LedgerIndex"]
-    print(f"   Offer: {offer_index}")
 
-    accept_tx = NFTokenAcceptOffer(account=consumer.classic_address, nftoken_sell_offer=offer_index)
+    # FINAL BULLETPROOF EXTRACTION
+    meta = resp.result.get("meta", {})
+    if isinstance(meta, str):
+        import json
+        meta = json.loads(meta)
+
+    offer_index = None
+    for node in meta.get("AffectedNodes", []):
+        created = node.get("CreatedNode", {})
+        if created.get("LedgerEntryType") == "NFTokenOffer":
+            offer_index = created["LedgerIndex"]
+            break
+
+    if not offer_index:
+        raise RuntimeError("Failed to create NFT offer")
+
+    print(f"   Offer created: {offer_index}")
+
+    # Step 2: Consumer accepts
+    accept_tx = NFTokenAcceptOffer(
+        account=consumer.classic_address,
+        nftoken_sell_offer=offer_index
+    )
     signed = sign(await autofill(accept_tx, client), consumer)
     await submit_and_wait(signed, client)
     print("   NFT transferred!")

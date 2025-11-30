@@ -10,6 +10,7 @@ Business Model:
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
 # Load .env
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,7 +19,7 @@ if env_path.exists():
     load_dotenv(env_path)
 
 
-class Settings:
+class Settings(BaseSettings):
     # XRPL Network
     RECYCLEFI_SEED: str = ""
     DEPOSIT_PERCENT: float = 6.0        # % of purchase locked in AMM
@@ -83,6 +84,6 @@ class Settings:
     
     # Frontend
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
+    RECYCLE_DAPP_URL: str = "http://localhost:3000"
 
 settings = Settings()
