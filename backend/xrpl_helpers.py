@@ -110,9 +110,9 @@ async def create_recyclable_item_v3(
     # Step 1: Mint the recycling NFT (proof of deposit)
     print("[1/4] Minting Recycling NFT...")
 
-    # AUTO-RECYCLE IN 30 DAYS — THIS IS THE MAGIC // to change
-    expiry_timestamp = int((datetime.now() + timedelta(days=30)).timestamp())
-    print(f"AUTO-RECYCLE ENABLED: NFT expires in 30 days → anyone can burn & claim")
+    # AUTO-RECYCLE IN seconds=30 — THIS IS THE MAGIC
+    expiry_timestamp = int((datetime.now() + timedelta(seconds=30)).timestamp())
+    print(f"AUTO-RECYCLE ENABLED: NFT expires in seconds=30 → anyone can burn & claim")
 
     mint_tx = NFTokenMint(
         account=RECYCLEFI.classic_address,
