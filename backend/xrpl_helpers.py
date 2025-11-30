@@ -2,13 +2,14 @@
 
 import os
 import qrcode
-from datetime import datetime
+from datetime import datetime, timedelta
 from xrpl.asyncio.clients import AsyncJsonRpcClient
 from xrpl.models import (
     NFTokenMint, NFTokenMintFlag, Memo,
     AMMDeposit, AMMDepositFlag, IssuedCurrencyAmount,
     Payment  # ← Added for company payment
 )
+
 from xrpl.models.currencies import XRP, IssuedCurrency
 from xrpl.asyncio.transaction import autofill, sign, submit_and_wait
 from xrpl.utils import xrp_to_drops
@@ -108,11 +109,19 @@ async def create_recyclable_item_v3(
 
     # Step 1: Mint the recycling NFT (proof of deposit)
     print("[1/4] Minting Recycling NFT...")
+
+    # AUTO-RECYCLE IN 30 DAYS — THIS IS THE MAGIC // to change
+    expiry_timestamp = int((datetime.now() + timedelta(days=30)).timestamp())
+    print(f"AUTO-RECYCLE ENABLED: NFT expires in 30 days → anyone can burn & claim")
+
     mint_tx = NFTokenMint(
         account=RECYCLEFI.classic_address,
         nftoken_taxon=2025,
-        flags=NFTokenMintFlag.TF_TRANSFERABLE,
-        uri="697066733A2F2F72656379636C6566692D7633"
+        flags=NFTokenMintFlag.TF_TRANSFERABLE | NFTokenMintFlag.TF_BURNABLE,
+        uri=f"ipfs://recyclefi/{product_name.lower().replace(' ', '-')}".encode().hex(),
+        # uri="697066733A2F2F72656379636C6566692D7633",
+        amount="0",
+        expiration=expiry_timestamp  # ← THIS IS THE AUTO-RECYCLE TRIGGER
     )
     signed = sign(await autofill(mint_tx, client), RECYCLEFI)
     resp = await submit_and_wait(signed, client)
