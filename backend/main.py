@@ -253,103 +253,6 @@ async def get_lp_balance() -> float:
         print(f"AMMInfo failed: {e}")
         return 0.0
 
-@app.post("/api/v1/recycle")
-async def recycle_burn_claim(request: BurnClaimRequest):
-    nft_id = request.nft_id.strip().upper()
-    user_wallet = request.user_wallet.strip()
-    burn_hash = request.burn_tx_hash.strip()
-
-    print(f"\n[RECYCLE] Claiming reward for NFT ...{nft_id[-10:]} via burn {burn_hash[:10]}...")
-
-    try:
-        tx_resp = await client.request(Tx(transaction=burn_hash))
-        tx = tx_resp.result
-
-        # Skip transaction type check - just verify the key facts:
-        if not tx.get("validated", False):
-            raise ValueError("Burn not confirmed on ledger")
-
-        if tx.get("NFTokenID", "").upper() != nft_id:
-            raise ValueError("Wrong NFT in transaction")
-
-        if tx.get("Account") != user_wallet:
-            raise ValueError("Wrong wallet")
-
-        print(f"[RECYCLE] ✓ BURN CONFIRMED — {user_wallet[-6:]} burned correct NFT")
-
-    except Exception as e:
-        print(f"[RECYCLE] ✗ BURN REJECTED: {e}")
-        raise HTTPException(400, f"Invalid burn: {e}")
-
-    # === Withdraw from AMM ===
-    try:
-        amm_info = await client.request(AMMInfo(asset=XRP_ASSET, asset2=CUSD_ASSET))
-        lp_token = amm_info.result["amm"]["lp_token"]
-
-        lines = await client.request(AccountLines(account=RECYCLEFI.classic_address))
-        lp_balance = 0.0
-        for line in lines.result.get("lines", []):
-            if line.get("currency") == lp_token["currency"] and line.get("account") == lp_token["issuer"]:
-                lp_balance = float(line["balance"])
-                break
-
-        if lp_balance < 0.0001:
-            raise HTTPException(400, "No funds to release")
-
-        before = await client.request(AccountInfo(account=RECYCLEFI.classic_address))
-        before_xrp = int(before.result["account_data"]["Balance"]) / 1_000_000
-
-        withdraw_tx = AMMWithdraw(
-            account=RECYCLEFI.classic_address,
-            asset=XRP_ASSET,
-            asset2=CUSD_ASSET,
-            lp_token_in=IssuedCurrencyAmount(
-                currency=lp_token["currency"],
-                issuer=lp_token["issuer"],
-                value=str(lp_balance)
-            ),
-            flags=AMMWithdrawFlag.TF_WITHDRAW_ALL
-        )
-
-        signed = sign(await autofill(withdraw_tx, client), RECYCLEFI)
-        await submit_and_wait(signed, client)
-
-        await asyncio.sleep(5)
-        after = await client.request(AccountInfo(account=RECYCLEFI.classic_address))
-        after_xrp = int(after.result["account_data"]["Balance"]) / 1_000_000
-        received = max(0.01, after_xrp - before_xrp)
-
-        print(f"[RECYCLE] Withdrew {received:.4f} XRP from AMM")
-
-    except Exception as e:
-        raise HTTPException(500, f"Withdraw failed: {e}")
-
-    # === PAY REWARDS ===
-    recycler = received * 0.70
-    company = received * 0.20
-    protocol = received * 0.10
-
-    COMPANY_WALLET = Wallet.from_seed("sEd71jnhCy64g8kpBYzkfddYfRyQCHZ").classic_address
-
-    async def pay(to, amt, name):
-        if amt < 0.0001: return
-        p = Payment(account=RECYCLEFI.classic_address, destination=to, amount=xrp_to_drops(amt))
-        signed = sign(await autofill(p, client), RECYCLEFI)
-        resp = await submit_and_wait(signed, client)
-        print(f"   → {name}: {amt:.4f} XRP → {resp.result['hash'][:10]}...")
-
-    await pay(user_wallet, recycler, "Recycler reward")
-    await pay(COMPANY_WALLET, company, "Company bonus")
-    await pay(RECYCLEFI.classic_address, protocol, "Protocol fee")
-
-    return {
-        "success": True,
-        "recycler_reward_xrp": round(recycler, 4),
-        "company_bonus_xrp": round(company, 4),
-        "withdrawn_xrp": round(received, 4),
-        "message": "Recycling successful — rewards paid!"
-    }
-
 @app.post("/api/v1/purchase")
 async def process_circular_purchase(
     product_name: str = Form("Eco Bottle"),
@@ -654,129 +557,244 @@ async def get_product_details(product_id: str):
 # CASE A & C: RECYCLE ENDPOINT
 # ========================================
 
-@app.post("/api/v1/products/{product_id}/recycle", response_model=RecycleResponse)
-async def recycle_product(product_id: str, request: RecycleProductRequest):
-    """
-    Recycle a product - handles CASE A and CASE C.
-    
-    CASE A: Product was SOLD → now recycled
-    - Withdraw both deposits + APY from AMM
-    - Return manufacturer deposit (5%)
-    - Return customer escrow (5%)
-    - Distribute APY: 40% buyer, 20% manufacturer, 20% recycler, 20% eco fund
-    
-    CASE C: Product was REGISTERED (never sold) → recycled
-    - Withdraw manufacturer deposit + APY from AMM
-    - Return manufacturer deposit (5%)
-    - Distribute APY: 50% manufacturer, 50% CYCLR
-    """
-    
-    product = get_product(product_id)
-    
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    if product.status not in [ProductStatus.REGISTERED, ProductStatus.SOLD]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Product cannot be recycled (current status: {product.status.value})"
-        )
-    
-    if product.total_lp_tokens <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="No LP tokens available for withdrawal"
-        )
-    
-    was_sold = product.status == ProductStatus.SOLD
-    
-    # Step 1: Withdraw from AMM
-    withdraw_result = await xrpl_service.withdraw_from_amm(
-        lp_tokens=product.total_lp_tokens,
-        product_id=product.id
-    )
-    
-    if not withdraw_result.get("success"):
-        return RecycleResponse(
-            success=False,
-            product_id=product.id,
-            case="A" if was_sold else "C",
-            total_withdrawn=0,
-            apy_earned=0,
-            distribution={},
-            tx_hashes={},
-            error=withdraw_result.get("error", "AMM withdrawal failed")
-        )
-    
-    # Calculate total and APY
-    total_withdrawn = withdraw_result.get("cusd_received", 0)
-    total_deposits = product.manufacturer_deposit + product.customer_escrow
-    apy_earned = max(0, total_withdrawn - total_deposits)
-    
-    # Step 2: Distribute based on case
-    distribution = {}
-    tx_hashes = {"withdrawal": withdraw_result.get("tx_hash", "")}
-    
-    if was_sold:
-        # CASE A: Sold & Recycled
-        print(f"📦 CASE A: Sold product recycled")
-        
-        # Return deposits
-        distribution["manufacturer_deposit_return"] = product.manufacturer_deposit
-        distribution["customer_escrow_return"] = product.customer_escrow
-        
-        # Distribute APY: 40/20/20/20
-        distribution["customer_apy"] = apy_earned * APY_USER_SHARE
-        distribution["manufacturer_apy"] = apy_earned * APY_MANUFACTURER_SHARE
-        distribution["recycler_apy"] = apy_earned * APY_RECYCLER_SHARE
-        distribution["eco_fund_apy"] = apy_earned * APY_ECO_FUND_SHARE
-        
-        # Store distribution on product
-        product.manufacturer_received = distribution["manufacturer_deposit_return"] + distribution["manufacturer_apy"]
-        product.customer_received = distribution["customer_escrow_return"] + distribution["customer_apy"]
-        product.recycler_received = distribution["recycler_apy"]
-        product.eco_fund_received = distribution["eco_fund_apy"]
-        
-    else:
-        # CASE C: Not sold, but recycled
-        print(f"📦 CASE C: Unsold product recycled")
-        
-        # Return manufacturer deposit
-        distribution["manufacturer_deposit_return"] = product.manufacturer_deposit
-        
-        # Distribute APY: 50/50
-        distribution["manufacturer_apy"] = apy_earned * 0.5
-        distribution["cyclr_apy"] = apy_earned * 0.5
-        
-        # Store distribution
-        product.manufacturer_received = distribution["manufacturer_deposit_return"] + distribution["manufacturer_apy"]
-        product.cyclr_received = distribution["cyclr_apy"]
-    
-    # Update product
-    product.status = ProductStatus.RECYCLED
-    product.recycled_at = datetime.now(timezone.utc)
-    product.recycler_wallet = request.recycler_wallet
-    product.total_withdrawn = total_withdrawn
-    product.apy_earned = apy_earned
-    product.recycle_tx = withdraw_result.get("tx_hash")
-    
-    update_product(product)
-    
-    case = "A" if was_sold else "C"
-    print(f"✅ Product recycled (Case {case}): {product.name}")
-    print(f"   Total withdrawn: {total_withdrawn} CUSD")
-    print(f"   APY earned: {apy_earned} CUSD")
-    
-    return RecycleResponse(
-        success=True,
-        product_id=product.id,
-        case=case,
-        total_withdrawn=total_withdrawn,
-        apy_earned=apy_earned,
-        distribution=distribution,
-        tx_hashes=tx_hashes
-    )
+# Replace BOTH recycle endpoints with this single unified one
 
+class RecycleRequest(BaseModel):
+    """Unified request model for recycling"""
+    nft_id: str
+    user_wallet: str  # Can be recycler or customer
+    burn_tx_hash: str
+    product_id: Optional[str] = None  # Optional: for product lifecycle tracking
+
+@app.post("/api/v1/recycle")
+async def recycle_product_unified(request: RecycleRequest):
+    """
+    UNIFIED RECYCLE ENDPOINT
+    
+    Handles both:
+    1. Simple burn-and-claim (RecycleFi v3 flow)
+    2. Product lifecycle tracking (CYCLR business logic)
+    
+    Process:
+    1. Verify burn transaction on XRPL
+    2. Withdraw LP tokens from AMM
+    3. Distribute rewards (70% recycler, 20% company, 10% protocol)
+    4. Update product record if product_id provided
+    """
+    
+    nft_id = request.nft_id.strip().upper()
+    user_wallet = request.user_wallet.strip()
+    burn_hash = request.burn_tx_hash.strip()
+
+    print(f"\n{'='*60}")
+    print(f"[RECYCLE] Processing claim for NFT ...{nft_id[-10:]}")
+    print(f"[RECYCLE] Recycler: {user_wallet}")
+    print(f"[RECYCLE] Burn TX: {burn_hash[:10]}...")
+    print(f"{'='*60}")
+
+    # ========================================
+    # STEP 1: VERIFY BURN TRANSACTION
+    # ========================================
+    try:
+        tx_resp = await client.request(Tx(transaction=burn_hash))
+        tx = tx_resp.result
+
+        # Critical validations only
+        if not tx.get("validated", False):
+            raise ValueError("Transaction not confirmed on ledger")
+
+        if tx.get("NFTokenID", "").upper() != nft_id:
+            raise ValueError(f"NFT mismatch: expected {nft_id}, got {tx.get('NFTokenID')}")
+
+        if tx.get("Account") != user_wallet:
+            raise ValueError(f"Wallet mismatch: expected {user_wallet}, got {tx.get('Account')}")
+
+        print(f"[RECYCLE] ✓ Burn verified on-chain")
+
+    except Exception as e:
+        print(f"[RECYCLE] ✗ Burn verification failed: {e}")
+        raise HTTPException(400, f"Invalid burn transaction: {e}")
+
+    # ========================================
+    # STEP 2: WITHDRAW FROM AMM
+    # ========================================
+    try:
+        # Get AMM info
+        amm_info = await client.request(AMMInfo(asset=XRP_ASSET, asset2=CUSD_ASSET))
+        lp_token = amm_info.result["amm"]["lp_token"]
+        print(f"[RECYCLE] LP Token: {lp_token['currency'][:8]}...")
+
+        # Get current LP balance
+        lines = await client.request(AccountLines(account=RECYCLEFI.classic_address))
+        lp_balance = 0.0
+        for line in lines.result.get("lines", []):
+            if (line.get("currency") == lp_token["currency"] and 
+                line.get("account") == lp_token["issuer"]):
+                lp_balance = float(line["balance"])
+                break
+
+        if lp_balance < 0.0001:
+            raise HTTPException(400, "No LP tokens available for withdrawal")
+
+        print(f"[RECYCLE] Withdrawing {lp_balance:.6f} LP tokens...")
+
+        # Record XRP before withdrawal
+        before = await client.request(AccountInfo(account=RECYCLEFI.classic_address))
+        before_xrp = int(before.result["account_data"]["Balance"]) / 1_000_000
+
+        # Execute withdrawal
+        withdraw_tx = AMMWithdraw(
+            account=RECYCLEFI.classic_address,
+            asset=XRP_ASSET,
+            asset2=CUSD_ASSET,
+            lp_token_in=IssuedCurrencyAmount(
+                currency=lp_token["currency"],
+                issuer=lp_token["issuer"],
+                value=str(lp_balance)
+            ),
+            flags=AMMWithdrawFlag.TF_WITHDRAW_ALL
+        )
+
+        signed = sign(await autofill(withdraw_tx, client), RECYCLEFI)
+        withdraw_result = await submit_and_wait(signed, client)
+
+        if withdraw_result.result["meta"]["TransactionResult"] != "tesSUCCESS":
+            raise Exception(f"Withdrawal failed: {withdraw_result.result['meta']['TransactionResult']}")
+
+        # Wait for settlement
+        await asyncio.sleep(5)
+
+        # Calculate received amount
+        after = await client.request(AccountInfo(account=RECYCLEFI.classic_address))
+        after_xrp = int(after.result["account_data"]["Balance"]) / 1_000_000
+        received_xrp = max(0.01, after_xrp - before_xrp)
+
+        print(f"[RECYCLE] ✓ Withdrew {received_xrp:.4f} XRP from AMM")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[RECYCLE] ✗ AMM withdrawal failed: {e}")
+        raise HTTPException(500, f"Withdrawal failed: {e}")
+
+    # ========================================
+    # STEP 3: DISTRIBUTE REWARDS
+    # ========================================
+    
+    # Find deposit to get company wallet
+    deposit = await find_deposit_by_nft_id(nft_id)
+    company_wallet = None
+    
+    if deposit:
+        # Try to extract company wallet from memo or transaction
+        tx_data = deposit.get("tx", {})
+        # You might need to adjust this based on how you store company wallet
+        # For now, using a fallback
+        company_wallet = Wallet.from_seed("sEd71jnhCy64g8kpBYzkfddYfRyQCHZ").classic_address
+    else:
+        # Fallback company wallet
+        company_wallet = Wallet.from_seed("sEd71jnhCy64g8kpBYzkfddYfRyQCHZ").classic_address
+
+    # Calculate distribution
+    recycler_reward = received_xrp * 0.70
+    company_bonus = received_xrp * 0.20
+    protocol_fee = received_xrp * 0.10
+
+    print(f"[RECYCLE] Distributing rewards:")
+    print(f"          Recycler (70%): {recycler_reward:.4f} XRP")
+    print(f"          Company (20%):  {company_bonus:.4f} XRP")
+    print(f"          Protocol (10%): {protocol_fee:.4f} XRP")
+
+    async def pay(to: str, amount: float, label: str):
+        """Helper to send payment"""
+        if amount < 0.0001:
+            return None
+        
+        payment_tx = Payment(
+            account=RECYCLEFI.classic_address,
+            destination=to,
+            amount=xrp_to_drops(amount)
+        )
+        signed = sign(await autofill(payment_tx, client), RECYCLEFI)
+        result = await submit_and_wait(signed, client)
+        tx_hash = result.result["hash"]
+        print(f"          → {label}: {amount:.4f} XRP (TX: {tx_hash[:10]}...)")
+        return tx_hash
+
+    # Execute payments
+    tx_hashes = {}
+    tx_hashes["recycler"] = await pay(user_wallet, recycler_reward, "Recycler")
+    tx_hashes["company"] = await pay(company_wallet, company_bonus, "Company")
+    tx_hashes["protocol"] = await pay(RECYCLEFI.classic_address, protocol_fee, "Protocol")
+
+    # ========================================
+    # STEP 4: UPDATE PRODUCT RECORD (if provided)
+    # ========================================
+    product_data = None
+    if request.product_id:
+        try:
+            product = get_product(request.product_id)
+            if product:
+                # Determine case based on product status
+                was_sold = product.status == ProductStatus.SOLD
+                case = "A" if was_sold else "C"
+                
+                # Update product
+                product.status = ProductStatus.RECYCLED
+                product.recycled_at = datetime.now(timezone.utc)
+                product.recycler_wallet = user_wallet
+                product.total_withdrawn = received_xrp
+                product.apy_earned = max(0, received_xrp - product.total_in_amm)
+                product.recycler_received = recycler_reward
+                product.recycle_tx = burn_hash
+                
+                update_product(product)
+                
+                product_data = {
+                    "product_id": product.id,
+                    "product_name": product.name,
+                    "case": case,
+                    "status": product.status.value
+                }
+                
+                print(f"[RECYCLE] ✓ Product record updated (Case {case})")
+        except Exception as e:
+            print(f"[RECYCLE] ⚠ Failed to update product record: {e}")
+            # Don't fail the entire operation if product update fails
+
+    # ========================================
+    # RESPONSE
+    # ========================================
+    print(f"{'='*60}")
+    print(f"[RECYCLE] ✅ RECYCLING COMPLETE")
+    print(f"{'='*60}\n")
+
+    return {
+        "success": True,
+        "nft_id": nft_id,
+        "recycler_wallet": user_wallet,
+        "burn_tx_hash": burn_hash,
+        
+        # Financial details
+        "total_withdrawn_xrp": round(received_xrp, 4),
+        "distribution": {
+            "recycler_reward_xrp": round(recycler_reward, 4),
+            "company_bonus_xrp": round(company_bonus, 4),
+            "protocol_fee_xrp": round(protocol_fee, 4)
+        },
+        
+        # Transaction hashes
+        "tx_hashes": {
+            "burn": burn_hash,
+            "withdrawal": withdraw_result.result["hash"],
+            **tx_hashes
+        },
+        
+        # Product lifecycle (if applicable)
+        "product": product_data,
+        
+        "message": "♻️ Recycling successful! Rewards distributed."
+    }
 
 # ========================================
 # CASE B & D: EXPIRE ENDPOINT

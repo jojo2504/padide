@@ -8,6 +8,7 @@ from xrpl.asyncio.clients import AsyncJsonRpcClient
 from xrpl.asyncio.transaction import autofill, sign, submit_and_wait
 from xrpl.utils import xrp_to_drops
 from xrpl.models import Payment, NFTokenCreateOffer, NFTokenAcceptOffer, NFTokenBurn, NFTokenCreateOfferFlag, AccountInfo
+from xrpl.models.requests import Tx
 
 BASE_URL = "http://127.0.0.1:8000"
 client = AsyncJsonRpcClient("https://s.altnet.rippletest.net:51234/")
@@ -113,15 +114,43 @@ async def path_a_recycle_immediately(nft_id: str):
     burn_hash = resp.result["hash"]
     print(f"   BURNED: {burn_hash[:10]}...")
 
+    # CRITICAL FIX: Wait for burn to be fully validated and check it
+    print("   Waiting for burn validation...")
+    await asyncio.sleep(6)  # Give ledger time to fully validate
+    
+    # Verify the burn is actually on-chain with the NFT ID
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            tx_check = await client.request(Tx(transaction=burn_hash))
+            tx_result = tx_check.result
+            
+            if tx_result.get("validated") and tx_result.get("NFTokenID"):
+                print(f"   ✓ Burn validated on-chain with NFT ID")
+                break
+            else:
+                print(f"   Waiting for validation... (attempt {attempt + 1}/{max_retries})")
+                await asyncio.sleep(3)
+        except Exception as e:
+            print(e)
+            print(f"   Checking validation... (attempt {attempt + 1}/{max_retries})")
+            await asyncio.sleep(3)
+    
     print("   Claiming reward...")
     r = requests.post(f"{BASE_URL}/api/v1/recycle", json={
         "nft_id": nft_id,
         "user_wallet": consumer.classic_address,
         "burn_tx_hash": burn_hash
     })
+    
+    if r.status_code != 200:
+        print(f"   ERROR: {r.status_code}")
+        print(f"   Response: {r.text}")
+        return
+    
     result = r.json()
-    print(f"   Recycler reward: {result.get('recycler_reward_xrp', 0):.3f} XRP")
-    print(f"   Company bonus: {result.get('company_bonus_xrp', 0):.3f} XRP")
+    print(f"   Recycler reward: {result['distribution']['recycler_reward_xrp']:.3f} XRP")
+    print(f"   Company bonus: {result['distribution']['company_bonus_xrp']:.3f} XRP")
     print("   PATH A SUCCESS — Consumer incentivized!")
 
 
