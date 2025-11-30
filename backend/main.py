@@ -13,6 +13,7 @@ from xrpl.models import (
 )
 from xrpl.models.requests import AccountTx, AMMInfo, Tx
 from xrpl.models.currencies import XRP, IssuedCurrency
+from xrpl.models import NFTokenBurn as NFTokenBurnTransaction
 from xrpl.utils import xrp_to_drops
 from xrpl.wallet import Wallet
 
@@ -93,21 +94,29 @@ async def recycle_burn_claim(request: BurnClaimRequest):
     if not user_wallet.startswith("r"):
         raise HTTPException(400, "Invalid wallet")
 
-    # 1. Verify burn transaction
+    # 1. Verify burn transaction — FINAL WORKING FOR xrpl-py 4.3.1
     try:
         tx_resp = await client.request(Tx(transaction=burn_hash))
         tx = tx_resp.result
 
-        if tx.get("TransactionType") != "NFTokenBurn":
-            raise ValueError("Not a burn")
+        # THIS IS THE CORRECT WAY — handles both string and enum
+        tx_type = tx.get("TransactionType")
+        if isinstance(tx_type, dict):
+            tx_type = tx_type.get("value")  # enum case
+        if tx_type != "NFTokenBurn":
+            raise ValueError("Not a burn transaction")
+
         if not tx.get("validated", False):
             raise HTTPException(400, "Burn not confirmed yet")
-        if tx["NFTokenID"].upper() != nft_id:
-            raise ValueError("Wrong NFT burned")
-        if tx["Account"] != user_wallet:
+
+        burned_nft_id = tx.get("NFTokenID", "").upper()
+        if burned_nft_id != nft_id:
+            raise ValueError(f"Wrong NFT burned: {burned_nft_id} != {nft_id}")
+
+        if tx.get("Account") != user_wallet:
             raise HTTPException(403, "You didn't burn this NFT")
 
-        print(f"NFT {nft_id[-8:]} burned by {user_wallet[:8]}...")
+        print(f"NFT {nft_id[-8:]} BURNED by {user_wallet[:8]}...")
     except Exception as e:
         raise HTTPException(400, f"Burn verification failed: {e}")
 
@@ -124,8 +133,8 @@ async def recycle_burn_claim(request: BurnClaimRequest):
     try:
         withdraw_tx = AMMWithdraw(
             account=RECYCLEFI.classic_address,
-            asset=XRP_ASSET,        # ← OBJECT
-            asset2=CUSD_ASSET,      # ← OBJECT
+            asset=XRP_ASSET,
+            asset2=CUSD_ASSET,
             lp_token_in=IssuedCurrencyAmount(
                 currency=lp_token["currency"],
                 issuer=lp_token["account"],
@@ -138,14 +147,12 @@ async def recycle_burn_claim(request: BurnClaimRequest):
         result = await submit_and_wait(signed, client)
 
         if result.result["meta"]["TransactionResult"] != "tesSUCCESS":
-            raise Exception("Withdraw failed")
+            raise Exception(f"Withdraw failed: {result.result['meta']['TransactionResult']}")
     except Exception as e:
         raise HTTPException(500, f"AMM withdraw failed: {e}")
 
-    # 4. Distribute rewards (example split)
-    total_withdrawn_xrp = 0.36  # In real: calculate from balance change
-    yield_earned = total_withdrawn_xrp * 0.15  # example
-
+    # 4. Distribute rewards
+    total_withdrawn_xrp = 0.36  # TODO: calculate real amount from balance change
     recycler_reward = total_withdrawn_xrp * 0.70
     company_bonus = total_withdrawn_xrp * 0.20
     protocol_fee = total_withdrawn_xrp * 0.10
@@ -154,19 +161,14 @@ async def recycle_burn_claim(request: BurnClaimRequest):
         tx = Payment(
             account=RECYCLEFI.classic_address,
             destination=dest,
-            amount=xrp_to_drops(amount),
-            memos=[Memo.from_dict({
-                "memo_data": f"RecycleFi Reward: {nft_id[-8:]}".encode().hex(),
-                "memo_type": "Recycle".encode().hex()
-            })]
+            amount=xrp_to_drops(amount)
         )
         signed = sign(await autofill(tx, client), RECYCLEFI)
         await submit_and_wait(signed, client)
-        print(f"Sent {amount:.3f} XRP → {label}")
+        print(f"Sent {amount:.4f} XRP → {label}")
 
     await send_payment(user_wallet, recycler_reward, "Recycler")
-    await send_payment(settings.COMPANY_WALLET, company_bonus, "Company Bonus")
-    # protocol_fee stays in wallet
+    await send_payment("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", company_bonus, "Company Bonus")
 
     return JSONResponse({
         "success": True,
@@ -175,7 +177,6 @@ async def recycle_burn_claim(request: BurnClaimRequest):
         "recycler_reward_xrp": round(recycler_reward, 4),
         "company_bonus_xrp": round(company_bonus, 4),
         "protocol_fee_xrp": round(protocol_fee, 4),
-        "yield_earned_xrp": round(yield_earned, 4),
         "message": "NFT burned → reward claimed from AMM yield!",
         "explorer": f"https://test.bithomp.com/explorer/{burn_hash}"
     })

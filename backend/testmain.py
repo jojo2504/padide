@@ -12,19 +12,22 @@ from xrpl.models import (
     NFTokenAcceptOffer,
     NFTokenCreateOfferFlag
 )
+from xrpl.models.requests import AccountInfo
 
 BASE_URL = "http://127.0.0.1:8000"
 client = AsyncJsonRpcClient("https://s.altnet.rippletest.net:51234/")
 
 RECYCLEFI_SEED = "sEdT18iUpWKctx6w7V1UPCN22ZK46bd"
 CONSUMER_SEED  = "sEdTfzsWzEnC1gnxd9ViJJZWW7f9haB"
-
+COMPAGNY_SEED  = "sEd71jnhCy64g8kpBYzkfddYfRyQCHZ"
 recyclefi = Wallet.from_seed(RECYCLEFI_SEED)
 consumer = Wallet.from_seed(CONSUMER_SEED)
+compagny = Wallet.from_seed(COMPAGNY_SEED)
 
 print("RECYCLEFI v3 — FINAL TEST")
 print(f"RecycleFi: {recyclefi.classic_address}")
-print(f"Consumer : {consumer.classic_address}\n")
+print(f"Consumer : {consumer.classic_address}")
+print(f"Compagny : {compagny.classic_address}")
 
 
 def buy_product():
@@ -33,7 +36,7 @@ def buy_product():
         "product_name": "Eco Bottle",
         "price_xrp": "5.0",
         "deposit_percent": "6.0",
-        "company_wallet": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+        "company_wallet": compagny.classic_address,
         "consumer_wallet": consumer.classic_address
     })
     if r.status_code != 200:
@@ -49,6 +52,23 @@ def buy_product():
     print(f"   RecycleFi fee: {data['protocol_fee_xrp']:.6f} XRP")
     return nft_id
 
+async def check_account_exists(address, name):
+    """Check if account exists on ledger"""
+    print(f"\n[CHECK] Verifying {name} account exists...")
+    try:
+        request = AccountInfo(
+            account=address,
+            ledger_index="validated"
+        )
+        info = await client.request(request)
+        bal = int(info.result["account_data"]["Balance"]) / 1_000_000
+        print(f"  ✓ {name} EXISTS: {address}")
+        print(f"    Balance: {bal} XRP")
+        return True
+    except Exception as e:
+        print(f"  ✗ {name} NOT FOUND: {address}")
+        print(f"    Error: {type(e).__name__}: {e}")
+        return False
 
 async def get_offer_index_from_response(resp):
     meta = resp.result.get("meta", {})
@@ -111,11 +131,15 @@ async def burn_and_claim(nft_id: str):
     print(r.json())
 
 
-def main():
+async def main():
+    await check_account_exists(recyclefi.classic_address, "recyclefi")
+    await check_account_exists(consumer.classic_address, "Consumer")
+    await check_account_exists(compagny.classic_address, "Company")
+
     nft_id = buy_product()
     print(f"\nWaiting 3 seconds before recycling...")
     time.sleep(3)
-    asyncio.run(burn_and_claim(nft_id))
+    await burn_and_claim(nft_id)
     print(f"\nFULL CIRCULAR FLOW COMPLETED — CONSUMER MADE PROFIT!")
     print("   AMM deposit → yield → split on burn")
     print("   You earned 1% + 10% = double revenue")
@@ -123,4 +147,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
